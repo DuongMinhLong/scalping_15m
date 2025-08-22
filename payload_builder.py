@@ -35,6 +35,7 @@ def session_meta() -> Dict[str, int | str]:
     }
 
 
+CACHE_15M: Dict[str, pd.DataFrame] = {}
 CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
 
@@ -109,14 +110,21 @@ def build_snap(df: pd.DataFrame) -> Dict:
 def coin_payload(exchange, symbol: str) -> Dict:
     """Build payload for a single symbol including multi-timeframe data."""
 
-    df15 = fetch_ohlcv_df(exchange, symbol, "15m", 300)
+    if symbol not in CACHE_15M:
+        CACHE_15M[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
+    else:
+        last_ts = int(CACHE_15M[symbol].index[-1].timestamp() * 1000)
+        new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
+        if not new.empty:
+            df = pd.concat([CACHE_15M[symbol], new]).sort_index()
+            CACHE_15M[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
     if symbol not in CACHE_H1:
         CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
     if symbol not in CACHE_H4:
         CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "c15": build_15m(df15),
+        "c15": build_15m(CACHE_15M[symbol]),
         "h1": build_snap(CACHE_H1[symbol]),
         "h4": build_snap(CACHE_H4[symbol]),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),

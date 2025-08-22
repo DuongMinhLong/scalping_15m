@@ -61,10 +61,16 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
         return symbols[:limit]
 
 
-def fetch_ohlcv_df(exchange: ccxt.Exchange, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
+def fetch_ohlcv_df(
+    exchange: ccxt.Exchange,
+    symbol: str,
+    timeframe: str,
+    limit: int,
+    since: int | None = None,
+) -> pd.DataFrame:
     """Fetch OHLCV data and return as a tidy :class:`~pandas.DataFrame`."""
 
-    raw = exchange.fetch_ohlcv(symbol, timeframe, since=None, limit=limit)
+    raw = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
     df = pd.DataFrame(raw, columns=["ts", "open", "high", "low", "close", "volume"])
     df["ts"] = pd.to_datetime(df.ts, unit="ms", utc=True)
     return df.set_index("ts").sort_index()
