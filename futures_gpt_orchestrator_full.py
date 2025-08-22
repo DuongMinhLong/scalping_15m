@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import time
+import sched
 from typing import Any, Dict, List
 
 from env_utils import (
@@ -194,13 +195,21 @@ def live_loop(limit: int = 20):
 
     ex = make_exchange()
     active: Dict[str, Dict[str, Any]] = {}
-    while True:
+    scheduler = sched.scheduler(time.time, time.sleep)
+
+    def run_job():
         res = run(run_live=True, limit=limit, ex=ex)
         for p in res.get("placed", []):
             active[p["pair"]] = p
-        for _ in range(3):
-            time.sleep(300)
-            move_sl_to_entry_if_tp1_hit(ex, active)
+        scheduler.enter(15 * 60, 1, run_job)
+
+    def sl_job():
+        move_sl_to_entry_if_tp1_hit(ex, active)
+        scheduler.enter(5 * 60, 1, sl_job)
+
+    scheduler.enter(0, 1, run_job)
+    scheduler.enter(0, 1, sl_job)
+    scheduler.run()
 
 
 if __name__ == "__main__":
