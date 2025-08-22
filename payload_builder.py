@@ -48,7 +48,7 @@ _H4_LOCK = Lock()
 
 
 def _schedule_cached_df(
-    tasks: Dict[str, any],
+    tasks: Dict[str, Any],
     key: str,
     exchange,
     symbol: str,
