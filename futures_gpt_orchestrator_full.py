@@ -234,6 +234,107 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
 
 
 
+def _get_position_info(pos):
+    symbol = pos.get("symbol") or (pos.get("info") or {}).get("symbol")
+    amt = pos.get("contracts")
+    if amt is None:
+        amt = pos.get("amount")
+    if amt is None:
+        amt = (pos.get("info") or {}).get("positionAmt")
+    try:
+        amt_val = float(amt)
+    except Exception:
+        return None
+    if amt_val == 0:
+        return None
+    side = "buy" if amt_val > 0 else "sell"
+    entry = pos.get("entryPrice") or (pos.get("info") or {}).get("entryPrice")
+    try:
+        entry_price = float(entry)
+    except Exception:
+        return None
+    return symbol, side, entry_price, amt_val
+
+
+def _get_sl_tp_orders(exchange, symbol):
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+        last = ticker.get("last")
+        if last is None:
+            last = (ticker.get("info") or {}).get("lastPrice")
+        last_price = float(last)
+    except Exception:
+        last_price = 0
+    try:
+        orders = exchange.fetch_open_orders(symbol)
+    except Exception:
+        return [], [], last_price
+    sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
+    tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+    return sl_orders, tp_orders, last_price
+
+
+def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
+    if len(tp_orders) < 2:
+        return sl_orders, tp_orders
+    if side == "buy":
+        tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
+        price_hit = last_price >= float(tp1_order.get("price") or 0)
+        exit_side = "sell"
+    else:
+        tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0), reverse=True)[0]
+        price_hit = last_price <= float(tp1_order.get("price") or 0)
+        exit_side = "buy"
+    if not price_hit:
+        return sl_orders, tp_orders
+    qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
+    try:
+        exchange.cancel_order(tp1_order.get("id"), symbol)
+    except Exception:
+        pass
+    try:
+        exchange.create_order(symbol, "market", exit_side, qty_tp1, None, {"reduceOnly": True})
+    except Exception:
+        return sl_orders, tp_orders
+    sl_orders, tp_orders, _ = _get_sl_tp_orders(exchange, symbol)
+    return sl_orders, tp_orders
+
+
+def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
+    try:
+        sl_price = float(sl_order.get("price") or sl_order.get("stopPrice") or 0)
+    except Exception:
+        sl_price = 0
+    if abs(sl_price - entry_price) < 1e-8:
+        return
+    try:
+        exchange.cancel_order(sl_order.get("id"), symbol)
+    except Exception:
+        pass
+    try:
+        qty = abs(amt_val)
+        if side == "buy":
+            exchange.create_order(
+                symbol,
+                "stop",
+                "sell",
+                qty,
+                entry_price,
+                {"stopPrice": entry_price, "reduceOnly": True},
+            )
+        else:
+            exchange.create_order(
+                symbol,
+                "stop",
+                "buy",
+                qty,
+                entry_price,
+                {"stopPrice": entry_price, "reduceOnly": True},
+            )
+    except Exception:
+        return
+
+
 def move_sl_to_entry_if_tp1_hit(exchange):
     """Move stop-loss to entry once the first take-profit fills."""
 
@@ -243,102 +344,17 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         return
 
     for pos in positions or []:
-        symbol = pos.get("symbol") or (pos.get("info") or {}).get("symbol")
-        amt = pos.get("contracts")
-        if amt is None:
-            amt = pos.get("amount")
-        if amt is None:
-            amt = (pos.get("info") or {}).get("positionAmt")
-        try:
-            amt_val = float(amt)
-        except Exception:
+        info = _get_position_info(pos)
+        if info is None:
             continue
-        if amt_val == 0:
-            continue
-        side = "buy" if amt_val > 0 else "sell"
-        entry = pos.get("entryPrice") or (pos.get("info") or {}).get("entryPrice")
-        try:
-            entry_price = float(entry)
-        except Exception:
-            continue
-        try:
-            ticker = exchange.fetch_ticker(symbol)
-            last = ticker.get("last")
-            if last is None:
-                last = (ticker.get("info") or {}).get("lastPrice")
-            last_price = float(last)
-        except Exception:
-            last_price = 0
-        try:
-            orders = exchange.fetch_open_orders(symbol)
-        except Exception:
-            continue
-        sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
-        tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+        symbol, side, entry_price, amt_val = info
+        sl_orders, tp_orders, last_price = _get_sl_tp_orders(exchange, symbol)
         if not sl_orders:
             continue
-        if len(tp_orders) >= 2:
-            if side == "buy":
-                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
-                price_hit = last_price >= float(tp1_order.get("price") or 0)
-                exit_side = "sell"
-            else:
-                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0), reverse=True)[0]
-                price_hit = last_price <= float(tp1_order.get("price") or 0)
-                exit_side = "buy"
-            if not price_hit:
-                continue
-            qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
-            try:
-                exchange.cancel_order(tp1_order.get("id"), symbol)
-            except Exception:
-                pass
-            try:
-                exchange.create_order(symbol, "market", exit_side, qty_tp1, None, {"reduceOnly": True})
-            except Exception:
-                continue
-            try:
-                orders = exchange.fetch_open_orders(symbol)
-            except Exception:
-                continue
-            sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
-            tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+        sl_orders, tp_orders = _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders)
         if len(tp_orders) >= 2:
             continue
-        sl_order = sl_orders[0]
-        try:
-            sl_price = float(sl_order.get("price") or sl_order.get("stopPrice") or 0)
-        except Exception:
-            sl_price = 0
-        if abs(sl_price - entry_price) < 1e-8:
-            continue
-        try:
-            exchange.cancel_order(sl_order.get("id"), symbol)
-        except Exception:
-            pass
-        try:
-            qty = abs(amt_val)
-            if side == "buy":
-                exchange.create_order(
-                    symbol,
-                    "stop",
-                    "sell",
-                    qty,
-                    entry_price,
-                    {"stopPrice": entry_price, "reduceOnly": True},
-                )
-            else:
-                exchange.create_order(
-                    symbol,
-                    "stop",
-                    "buy",
-                    qty,
-                    entry_price,
-                    {"stopPrice": entry_price, "reduceOnly": True},
-                )
-        except Exception:
-            continue
-
+        _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
 def live_loop(limit: int = 20):
     """Run the orchestrator every 15 minutes and adjust SL every 5 minutes."""
