@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from env_utils import rfloat
 from openai_client import try_extract_json
+from typing import Iterable
 
 
 def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
@@ -43,10 +44,38 @@ def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
     return out
 
 
-def to_ccxt_symbol(pair_no_slash: str) -> str:
-    """Convert ``BASEQUOTE`` pair to CCXT ``BASE/QUOTE`` format."""
+KNOWN_QUOTES: Iterable[str] = (
+    "USDT",
+    "BUSD",
+    "USDC",
+    "USD",
+    "BTC",
+    "ETH",
+    "BNB",
+)
 
-    base, quote = pair_no_slash[:-4], pair_no_slash[-4:]
+
+def to_ccxt_symbol(pair_no_slash: str, exchange: Any | None = None) -> str:
+    """Convert ``BASEQUOTE`` pair to CCXT ``BASE/QUOTE`` format.
+
+    Tries to detect the quote token by checking known quote currencies or
+    consulting ``exchange.markets`` if an exchange instance is supplied.
+    Falls back to splitting the last four characters if no match is found.
+    """
+
+    pair = pair_no_slash.upper()
+    if exchange is not None:
+        markets = getattr(exchange, "markets", {}) or {}
+        for m in markets.values():
+            sym = m.get("symbol")
+            if isinstance(sym, str) and sym.replace("/", "") == pair:
+                return sym
+    for q in sorted(KNOWN_QUOTES, key=len, reverse=True):
+        if pair.endswith(q):
+            base = pair[: -len(q)]
+            if base:
+                return f"{base}/{q}"
+    base, quote = pair[:-4], pair[-4:]
     return f"{base}/{quote}"
 
 

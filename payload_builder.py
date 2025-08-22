@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
 import pandas as pd
@@ -131,10 +131,22 @@ def coin_payload(exchange, symbol: str) -> Dict:
     with LOCK_H1:
         if symbol not in CACHE_H1:
             CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
+        else:
+            last_ts = int(CACHE_H1[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, "1h", 300, since=last_ts)
+            if not new.empty:
+                df = pd.concat([CACHE_H1[symbol], new]).sort_index()
+                CACHE_H1[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         h1 = CACHE_H1[symbol]
     with LOCK_H4:
         if symbol not in CACHE_H4:
             CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
+        else:
+            last_ts = int(CACHE_H4[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, "4h", 300, since=last_ts)
+            if not new.empty:
+                df = pd.concat([CACHE_H4[symbol], new]).sort_index()
+                CACHE_H4[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         h4 = CACHE_H4[symbol]
     payload = {
         "pair": norm_pair_symbol(symbol),
@@ -175,8 +187,15 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         if len(symbols) >= limit:
             break
     func = partial(coin_payload, exchange)
+    coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
-        coins = list(ex.map(func, symbols))
+        futures = {ex.submit(func, s): s for s in symbols}
+        for fut in as_completed(futures):
+            sym = futures[fut]
+            try:
+                coins.append(fut.result())
+            except Exception as e:
+                print(f"coin_payload failed for {sym}: {e}")
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
         "eth": eth_bias(exchange),

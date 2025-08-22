@@ -15,10 +15,26 @@ if ! command -v pip >/dev/null; then
     exit 1
 fi
 
-# Stop any running orchestrator
+# Stop any running orchestrator via PID file
 echo "🛑 Checking and stopping old futures_gpt_orchestrator_full.py if running..."
-pkill -f futures_gpt_orchestrator_full.py || true
-sleep 2
+PID_FILE="orchestrator.pid"
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE")
+    if ps -p "$OLD_PID" > /dev/null 2>&1; then
+        if ps -p "$OLD_PID" -o args= | grep -q "futures_gpt_orchestrator_full.py"; then
+            echo "Stopping orchestrator PID $OLD_PID"
+            kill "$OLD_PID"
+            sleep 2
+        else
+            echo "PID $OLD_PID does not belong to orchestrator, skipping"
+        fi
+    else
+        echo "No process found for PID $OLD_PID"
+    fi
+    rm -f "$PID_FILE"
+else
+    echo "No existing PID file found"
+fi
 
 # Create virtual environment if missing
 if [ ! -d "venv" ]; then
@@ -57,6 +73,7 @@ find . -name "*.pyc" -delete
 # Run orchestrator
 echo "🏃 Running futures_gpt_orchestrator_full.py in background with nohup ..."
 nohup python3 futures_gpt_orchestrator_full.py --loop > bot.log 2>&1 &
+echo $! > "$PID_FILE"
 
 # Deactivate environment
 deactivate
