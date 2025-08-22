@@ -6,6 +6,7 @@ import os
 from typing import Dict, List
 
 from concurrent.futures import ThreadPoolExecutor
+import atexit
 import ccxt
 import pandas as pd
 
@@ -17,6 +18,7 @@ BLACKLIST_BASES = {"BTC", "BNB"}
 # Shared thread pool for exchange requests with a conservative worker limit
 MAX_WORKERS = int(os.getenv("EX_MAX_WORKERS", "5"))
 THREAD_POOL = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+atexit.register(THREAD_POOL.shutdown, wait=False)
 
 
 def make_exchange() -> ccxt.Exchange:

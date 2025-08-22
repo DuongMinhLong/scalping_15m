@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set
 
 import pandas as pd
 from threading import Lock
@@ -45,6 +45,26 @@ CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
 _H1_LOCK = Lock()
 _H4_LOCK = Lock()
+
+
+def _schedule_cached_df(
+    tasks: Dict[str, any],
+    key: str,
+    exchange,
+    symbol: str,
+    timeframe: str,
+    cache: Dict[str, pd.DataFrame],
+    lock: Lock,
+) -> pd.DataFrame | None:
+    """Return cached dataframe or schedule a fetch if missing."""
+
+    with lock:
+        df = cache.get(symbol)
+    if df is None:
+        tasks[key] = THREAD_POOL.submit(
+            fetch_ohlcv_df, exchange, symbol, timeframe, 300
+        )
+    return df
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -126,19 +146,12 @@ def coin_payload(exchange, symbol: str) -> Dict:
         ),
     }
 
-    with _H1_LOCK:
-        df1h = CACHE_H1.get(symbol)
-    if df1h is None:
-        tasks["df1h"] = THREAD_POOL.submit(
-            fetch_ohlcv_df, exchange, symbol, "1h", 300
-        )
-
-    with _H4_LOCK:
-        df4h = CACHE_H4.get(symbol)
-    if df4h is None:
-        tasks["df4h"] = THREAD_POOL.submit(
-            fetch_ohlcv_df, exchange, symbol, "4h", 300
-        )
+    df1h = _schedule_cached_df(
+        tasks, "df1h", exchange, symbol, "1h", CACHE_H1, _H1_LOCK
+    )
+    df4h = _schedule_cached_df(
+        tasks, "df4h", exchange, symbol, "4h", CACHE_H4, _H4_LOCK
+    )
 
     df15 = tasks["df15"].result()
     if "df1h" in tasks:
@@ -165,20 +178,13 @@ def eth_bias(exchange) -> Dict:
     """Convenience wrapper returning ETH H1/H4 snapshots."""
 
     symbol = "ETH/USDT"
-    tasks = {}
-    with _H1_LOCK:
-        df1h = CACHE_H1.get(symbol)
-    if df1h is None:
-        tasks["df1h"] = THREAD_POOL.submit(
-            fetch_ohlcv_df, exchange, symbol, "1h", 300
-        )
-
-    with _H4_LOCK:
-        df4h = CACHE_H4.get(symbol)
-    if df4h is None:
-        tasks["df4h"] = THREAD_POOL.submit(
-            fetch_ohlcv_df, exchange, symbol, "4h", 300
-        )
+    tasks: Dict[str, Any] = {}
+    df1h = _schedule_cached_df(
+        tasks, "df1h", exchange, symbol, "1h", CACHE_H1, _H1_LOCK
+    )
+    df4h = _schedule_cached_df(
+        tasks, "df4h", exchange, symbol, "4h", CACHE_H4, _H4_LOCK
+    )
 
     if "df1h" in tasks:
         df1h = tasks["df1h"].result()
