@@ -125,17 +125,10 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
-            qty_tp1 = rfloat(qty * 0.2, 8)
-            qty_tp2 = rfloat(qty - qty_tp1, 8)
-            entry_order = ex.create_order(ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False})
-            if side == "buy":
-                sl_order = ex.create_order(ccxt_sym, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True})
-                tp1_order = ex.create_order(ccxt_sym, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True})
-                tp2_order = ex.create_order(ccxt_sym, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True})
-            else:
-                sl_order = ex.create_order(ccxt_sym, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True})
-                tp1_order = ex.create_order(ccxt_sym, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True})
-                tp2_order = ex.create_order(ccxt_sym, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True})
+            entry_order = ex.create_order(
+                ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
+            )
+            # Only submit the entry order now; SL/TP orders will be placed after fill
             placed.append(
                 {
                     "pair": pair,
@@ -146,9 +139,6 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
                     "tp2": tp2,
                     "qty": qty,
                     "entry_id": entry_order.get("id"),
-                    "sl_id": sl_order.get("id"),
-                    "tp1_id": tp1_order.get("id"),
-                    "tp2_id": tp2_order.get("id"),
                 }
             )
 
