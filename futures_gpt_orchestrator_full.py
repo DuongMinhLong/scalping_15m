@@ -30,7 +30,7 @@ from env_utils import (
 from exchange_utils import make_exchange
 from openai_client import extract_content, send_openai, try_extract_json
 from payload_builder import build_payload
-from positions import get_open_position_pairs
+from positions import _norm_pair_from_symbol, get_open_position_pairs
 from prompts import build_prompts_mini, build_prompts_nano
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
@@ -41,6 +41,9 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     load_env()
     nano_model, mini_model = get_models()
     ex = ex or make_exchange()
+
+    if run_live:
+        cancel_unpositioned_limits(ex)
 
     try:
         bal = ex.fetch_balance()
@@ -153,6 +156,31 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         result["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_orders.json", dumps_min(result))
     return {"ts": stamp, **result}
+
+
+def cancel_unpositioned_limits(exchange):
+    """Cancel non-reduceOnly limit orders for pairs without open positions."""
+
+    try:
+        orders = exchange.fetch_open_orders()
+    except Exception:
+        return
+
+    pos_pairs = get_open_position_pairs(exchange)
+    for o in orders or []:
+        try:
+            if o.get("reduceOnly") or (o.get("type") or "").lower() != "limit":
+                continue
+            symbol = o.get("symbol") or (o.get("info") or {}).get("symbol")
+            pair = _norm_pair_from_symbol(symbol)
+            if pair in pos_pairs:
+                continue
+            try:
+                exchange.cancel_order(o.get("id"), symbol)
+            except Exception:
+                continue
+        except Exception:
+            continue
 
 
 def move_sl_to_entry_if_tp1_hit(exchange):
