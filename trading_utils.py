@@ -10,17 +10,17 @@ from openai_client import try_extract_json
 
 
 def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
-    """Parse MINI model output into a structured list of actions."""
+    """Phân tích output của mô hình MINI thành danh sách hành động."""
 
     data = try_extract_json(text)
     arr = data.get("coins", []) if isinstance(data, dict) else []
     out: List[Dict[str, Any]] = []
     for item in arr:
         if not isinstance(item, dict):
-            continue
+            continue  # bỏ qua phần tử không phải dict
         pair = (item.get("pair") or "").upper().replace("/", "")
         if not pair:
-            continue
+            continue  # thiếu mã giao dịch
         entry = item.get("entry")
         sl = item.get("sl")
         tp2 = item.get("tp2")
@@ -31,7 +31,14 @@ def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
             tp2 = float(tp2) if tp2 not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
         except Exception:
-            continue
+            continue  # dữ liệu số không hợp lệ
+        if None in (entry, sl) or entry == sl:
+            continue  # entry và SL phải có và khác nhau
+        if risk is not None and not (0 < risk < 1):
+            continue  # rủi ro phải trong (0,1)
+        if tp2 is not None:
+            if (entry > sl and tp2 <= entry) or (entry < sl and tp2 >= entry):
+                continue  # TP2 phải cùng hướng với entry-SL
         out.append({"pair": pair, "entry": entry, "sl": sl, "tp2": tp2, "risk": risk})
     return out
 
@@ -66,14 +73,24 @@ def round_step(qty: float, step: float) -> float:
     return math.floor(qty / step) * step
 
 
-def calc_qty(capital: float, risk_frac: float, entry: float, sl: float, step: float) -> float:
-    """Calculate order quantity based on risk parameters."""
+def calc_qty(
+    capital: float,
+    risk_frac: float,
+    entry: float,
+    sl: float,
+    step: float,
+    max_leverage: float = 1.0,
+    contract_size: float = 1.0,
+) -> float:
+    """Tính khối lượng theo rủi ro, giới hạn bởi leverage và vốn."""
 
     dist = abs(entry - sl)
     if dist <= 0 or risk_frac <= 0 or capital <= 0:
-        return 0.0
-    raw = (capital * risk_frac) / dist
-    return round_step(raw, step)
+        return 0.0  # dữ liệu không hợp lệ
+    raw = (capital * risk_frac) / dist  # khối lượng theo công thức rủi ro
+    max_qty = (capital * max_leverage) / (entry * contract_size)  # tối đa theo vốn và đòn bẩy
+    qty = min(raw, max_qty)  # cắt giảm nếu vượt quá giới hạn
+    return round_step(qty, step)
 
 
 def infer_side(entry: float, sl: float, tp: Optional[float]) -> Optional[str]:
@@ -114,9 +131,16 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.005
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
-        qty = calc_qty(capital, rf, float(entry), float(sl), step)
+        m = exchange.market(ccxt_sym)  # lấy thông tin thị trường
+        max_lev = float(
+            (m.get("limits", {}).get("leverage", {}) or {}).get("max")
+            or (m.get("info") or {}).get("maxLeverage")
+            or 1
+        )
+        contract = float(m.get("contractSize") or 1)
+        qty = calc_qty(capital, rf, float(entry), float(sl), step, max_lev, contract)
         if qty <= 0:
-            continue
+            continue  # bỏ qua nếu khối lượng bằng 0
         a["qty"] = rfloat(qty, 8)
         a["risk"] = rfloat(rf, 6)
         side = infer_side(float(entry), float(sl), float(tp2))

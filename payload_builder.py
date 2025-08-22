@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 import pandas as pd
+from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
@@ -41,6 +42,10 @@ def session_meta() -> Dict[str, int | str]:
 CACHE_15M: Dict[str, pd.DataFrame] = {}
 CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
+
+LOCK_15M = Lock()  # khoá bảo vệ cache 15m
+LOCK_H1 = Lock()   # khoá bảo vệ cache H1
+LOCK_H4 = Lock()   # khoá bảo vệ cache H4
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -111,39 +116,49 @@ def build_snap(df: pd.DataFrame) -> Dict:
 
 
 def coin_payload(exchange, symbol: str) -> Dict:
-    """Build payload for a single symbol including multi-timeframe data."""
+    """Xây dựng payload cho từng symbol với cache an toàn thread."""
 
-    if symbol not in CACHE_15M:
-        CACHE_15M[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
-    else:
-        last_ts = int(CACHE_15M[symbol].index[-1].timestamp() * 1000)
-        new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
-        if not new.empty:
-            df = pd.concat([CACHE_15M[symbol], new]).sort_index()
-            CACHE_15M[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-    if symbol not in CACHE_H1:
-        CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
-    if symbol not in CACHE_H4:
-        CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
+    with LOCK_15M:
+        if symbol not in CACHE_15M:
+            CACHE_15M[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
+        else:
+            last_ts = int(CACHE_15M[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
+            if not new.empty:
+                df = pd.concat([CACHE_15M[symbol], new]).sort_index()
+                CACHE_15M[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
+        c15 = CACHE_15M[symbol]
+    with LOCK_H1:
+        if symbol not in CACHE_H1:
+            CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
+        h1 = CACHE_H1[symbol]
+    with LOCK_H4:
+        if symbol not in CACHE_H4:
+            CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
+        h4 = CACHE_H4[symbol]
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "c15": build_15m(CACHE_15M[symbol]),
-        "h1": build_snap(CACHE_H1[symbol]),
-        "h4": build_snap(CACHE_H4[symbol]),
+        "c15": build_15m(c15),
+        "h1": build_snap(h1),
+        "h4": build_snap(h4),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
 
 
 def eth_bias(exchange) -> Dict:
-    """Convenience wrapper returning ETH H1/H4 snapshots."""
+    """Trả về snapshot H1/H4 của ETH với cache an toàn."""
 
     symbol = "ETH/USDT"
-    if symbol not in CACHE_H1:
-        CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
-    if symbol not in CACHE_H4:
-        CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
-    return {"h1": build_snap(CACHE_H1[symbol]), "h4": build_snap(CACHE_H4[symbol])}
+    with LOCK_H1:
+        if symbol not in CACHE_H1:
+            CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
+        h1 = CACHE_H1[symbol]
+    with LOCK_H4:
+        if symbol not in CACHE_H4:
+            CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
+        h4 = CACHE_H4[symbol]
+    return {"h1": build_snap(h1), "h4": build_snap(h4)}
 
 
 def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = None) -> Dict:

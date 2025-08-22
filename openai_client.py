@@ -8,9 +8,11 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
+import time
+
 
 def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
-    """Send a chat completion request and return the raw response dict."""
+    """Gửi yêu cầu chat completion với cơ chế retry đơn giản."""
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     body = {
@@ -21,11 +23,22 @@ def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
         ],
         "response_format": {"type": "text"},
     }
-    resp = client.chat.completions.create(**body)
-    try:
-        return resp.to_dict()
-    except Exception:
-        return resp
+    for attempt in range(3):  # thử tối đa 3 lần
+        try:
+            resp = client.chat.completions.create(**body)
+            try:
+                return resp.to_dict()  # trả về dict nếu có thể
+            except Exception:
+                return resp  # fallback nguyên bản
+        except Exception as e:
+            code = getattr(e, "status", None) or getattr(e, "http_status", None)
+            if attempt < 2 and (code is None or code >= 500 or code == 429):
+                wait = 2 * (attempt + 1)
+                print(f"send_openai lỗi tạm thời {code}, đợi {wait}s rồi thử lại")
+                time.sleep(wait)
+                continue
+            print(f"send_openai lỗi vĩnh viễn: {e}")
+            raise
 
 
 def extract_content(resp: Dict[str, Any]) -> str:

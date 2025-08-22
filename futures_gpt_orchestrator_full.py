@@ -18,6 +18,7 @@ import os
 import time
 import sched
 from typing import Any, Dict, List
+from threading import Thread
 
 from env_utils import (
     dumps_min,
@@ -35,6 +36,47 @@ from payload_builder import build_payload
 from positions import _norm_pair_from_symbol, get_open_position_pairs
 from prompts import build_prompts_mini, build_prompts_nano
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
+
+
+def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeout=120):
+    """Chờ lệnh vào khớp rồi đặt SL/TP tương ứng."""
+
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            o = exchange.fetch_order(order_id, symbol)
+            status = (o.get("status") or "").lower()
+            if status == "open":
+                time.sleep(2)  # chưa khớp, đợi thêm
+                continue
+            if status != "closed":
+                return  # lệnh bị huỷ hoặc hết hạn
+            qty_tp1 = rfloat(qty * 0.2, 8)
+            qty_tp2 = rfloat(qty - qty_tp1, 8)
+            if side == "buy":
+                exchange.create_order(
+                    symbol, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True}
+                )
+                exchange.create_order(
+                    symbol, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True}
+                )
+                exchange.create_order(
+                    symbol, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True}
+                )
+            else:
+                exchange.create_order(
+                    symbol, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True}
+                )
+                exchange.create_order(
+                    symbol, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True}
+                )
+                exchange.create_order(
+                    symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True}
+                )
+            return
+        except Exception:
+            time.sleep(2)  # lỗi tạm thời, thử lại
+    return
 
 
 def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
@@ -111,6 +153,13 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
 
     coins = enrich_tp_qty(ex, coins, capital)
 
+    if coins:
+        limits = {
+            c["pair"]: {"sl": c["sl"], "tp1": c["tp1"], "tp2": c["tp2"]}
+            for c in coins
+        }
+        save_text("gpt_limits.json", dumps_min(limits))  # ghi file để job nền đọc
+
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
         pos_pairs_live = get_open_position_pairs(ex)
@@ -128,7 +177,11 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             entry_order = ex.create_order(
                 ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
             )
-            # Only submit the entry order now; SL/TP orders will be placed after fill
+            Thread(
+                target=await_entry_fill,
+                args=(ex, ccxt_sym, entry_order.get("id"), side, qty, sl, tp1, tp2),
+                daemon=True,
+            ).start()  # chạy nền chờ khớp để đặt SL/TP
             placed.append(
                 {
                     "pair": pair,
@@ -237,6 +290,10 @@ def update_limits_from_file(exchange, path: str = "gpt_limits.json"):
                 exchange.create_order(symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True})
         except Exception:
             continue
+    try:
+        os.remove(path)  # xoá file sau khi xử lý để tránh lặp lại
+    except Exception:
+        pass
 
 
 def move_sl_to_entry_if_tp1_hit(exchange):
