@@ -15,7 +15,7 @@ from env_utils import rfloat
 # Symbols to skip when building the market universe
 BLACKLIST_BASES = {"BTC", "BNB"}
 
-# Shared thread pool for exchange requests with a conservative worker limit
+# Shared thread pool for exchange requests limited by EX_MAX_WORKERS
 MAX_WORKERS = int(os.getenv("EX_MAX_WORKERS", "5"))
 THREAD_POOL = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 atexit.register(THREAD_POOL.shutdown, wait=False)
