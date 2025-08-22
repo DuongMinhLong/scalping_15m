@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List
 
+from concurrent.futures import ThreadPoolExecutor
 import ccxt
 import pandas as pd
 
@@ -12,6 +13,10 @@ from env_utils import rfloat
 
 # Symbols to skip when building the market universe
 BLACKLIST_BASES = {"BTC", "BNB"}
+
+# Shared thread pool for exchange requests with a conservative worker limit
+MAX_WORKERS = int(os.getenv("EX_MAX_WORKERS", "5"))
+THREAD_POOL = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 
 def make_exchange() -> ccxt.Exchange:
