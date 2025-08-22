@@ -8,12 +8,15 @@ from typing import Dict, List, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
+import logging
 import pandas as pd
 from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
 from indicators import add_indicators, trend_lbl
+
+logger = logging.getLogger(__name__)
 
 
 def session_meta() -> Dict[str, int | str]:
@@ -195,7 +198,7 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
             try:
                 coins.append(fut.result())
             except Exception as e:
-                print(f"coin_payload failed for {sym}: {e}")
+                logger.warning("coin_payload failed for %s: %s", sym, e)
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
         "eth": eth_bias(exchange),

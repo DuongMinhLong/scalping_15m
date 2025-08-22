@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -12,6 +13,8 @@ from openai import (
     APITimeoutError,
     OpenAI,
 )
+
+logger = logging.getLogger(__name__)
 
 
 API_KEY = os.getenv("OPENAI_API_KEY")
@@ -42,19 +45,21 @@ def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
         except (APIConnectionError, APITimeoutError) as e:
             if attempt < 2:
                 wait = 2 * (attempt + 1)
-                print(f"send_openai lỗi kết nối {e}, đợi {wait}s rồi thử lại")
+                logger.warning("send_openai lỗi kết nối %s, đợi %ss rồi thử lại", e, wait)
                 time.sleep(wait)
                 continue
-            print(f"send_openai lỗi kết nối: {e}")
+            logger.error("send_openai lỗi kết nối: %s", e)
             raise
         except Exception as e:
             code = getattr(e, "status", None) or getattr(e, "http_status", None)
             if attempt < 2 and (code is None or code >= 500 or code == 429):
                 wait = 2 * (attempt + 1)
-                print(f"send_openai lỗi tạm thời {code}, đợi {wait}s rồi thử lại")
+                logger.warning(
+                    "send_openai lỗi tạm thời %s, đợi %ss rồi thử lại", code, wait
+                )
                 time.sleep(wait)
                 continue
-            print(f"send_openai lỗi vĩnh viễn: {e}")
+            logger.error("send_openai lỗi vĩnh viễn: %s", e)
             raise
 
 
