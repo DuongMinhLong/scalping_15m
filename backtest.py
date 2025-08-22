@@ -7,12 +7,15 @@ one might wire the existing helpers into a backtest.
 from __future__ import annotations
 
 import argparse
+import logging
 from typing import List
 
 import pandas as pd
 
 from exchange_utils import make_exchange, fetch_ohlcv_df
 from indicators import add_indicators
+
+logger = logging.getLogger(__name__)
 
 
 def simple_rsi_strategy(df: pd.DataFrame) -> List[float]:
@@ -34,7 +37,7 @@ def simple_rsi_strategy(df: pd.DataFrame) -> List[float]:
 
 
 def run_backtest(symbol: str, timeframe: str, limit: int, since: int | None) -> None:
-    """Run a backtest for ``symbol`` and print basic performance metrics."""
+    """Run a backtest for ``symbol`` and log basic performance metrics."""
 
     exchange = make_exchange()
     df = fetch_ohlcv_df(exchange, symbol, timeframe, limit, since)
@@ -50,8 +53,12 @@ def run_backtest(symbol: str, timeframe: str, limit: int, since: int | None) -> 
         win_rate = 0.0
         profit_factor = 0.0
         total = 0.0
-    print(
-        f"Trades: {len(trades)} | Win rate: {win_rate:.2%} | Profit factor: {profit_factor:.2f} | Total return: {total:.4f}"
+    logger.info(
+        "Trades: %s | Win rate: %.2f%% | Profit factor: %.2f | Total return: %.4f",
+        len(trades),
+        win_rate * 100,
+        profit_factor,
+        total,
     )
 
 

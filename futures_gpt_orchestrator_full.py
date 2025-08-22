@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
-import time
 import sched
-from typing import Any, Dict, List
+import time
 from threading import Thread
+from typing import Any, Dict, List
 
 from env_utils import (
     dumps_min,
@@ -36,6 +37,8 @@ from payload_builder import build_payload
 from positions import _norm_pair_from_symbol, get_open_position_pairs
 from prompts import build_prompts_mini, build_prompts_nano
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
+
+logger = logging.getLogger(__name__)
 
 
 def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeout=120):
@@ -432,7 +435,11 @@ if __name__ == "__main__":
     if args.loop:
         live_loop(limit=args.limit)
     elif args.run:
-        print(dumps_min(run(run_live=args.live, limit=args.limit)))
+        logger.info(dumps_min(run(run_live=args.live, limit=args.limit)))
     else:
-        print(dumps_min(run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 20))))
+        logger.info(
+            dumps_min(
+                run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 20))
+            )
+        )
 
