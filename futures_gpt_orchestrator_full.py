@@ -160,8 +160,8 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     return {"ts": stamp, **result}
 
 
-def cancel_unpositioned_limits(exchange):
-    """Cancel non-reduceOnly limit orders for pairs without open positions."""
+def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
+    """Cancel non-reduceOnly limit orders for pairs without positions once stale (>10m)."""
 
     try:
         orders = exchange.fetch_open_orders()
@@ -169,6 +169,7 @@ def cancel_unpositioned_limits(exchange):
         return
 
     pos_pairs = get_open_position_pairs(exchange)
+    now_ms = time.time() * 1000
     for o in orders or []:
         try:
             if o.get("reduceOnly") or (o.get("type") or "").lower() != "limit":
@@ -176,6 +177,12 @@ def cancel_unpositioned_limits(exchange):
             symbol = o.get("symbol") or (o.get("info") or {}).get("symbol")
             pair = _norm_pair_from_symbol(symbol)
             if pair in pos_pairs:
+                continue
+            ts = o.get("timestamp") or (o.get("info") or {}).get("updateTime") or (o.get("info") or {}).get("time")
+            if ts is None:
+                continue
+            age_sec = (now_ms - float(ts)) / 1000.0
+            if age_sec < max_age_sec:
                 continue
             try:
                 exchange.cancel_order(o.get("id"), symbol)
