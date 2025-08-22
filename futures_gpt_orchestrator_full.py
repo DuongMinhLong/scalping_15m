@@ -13,6 +13,8 @@ modules for clarity and maintainability.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import time
 import sched
 from typing import Any, Dict, List
@@ -86,27 +88,26 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     except Exception:
         keep = []
 
-    fallback_reason = None
-    kept: List[Dict[str, Any]] = []
-    if keep:
-        kept = [c for c in payload_full["coins"] if c["pair"] in keep]
-    elif payload_full["coins"]:
-        kept = payload_full["coins"]
-        fallback_reason = "keep_empty_used_all"
+    kept: List[Dict[str, Any]] = [c for c in payload_full["coins"] if c["pair"] in keep]
+    if not kept:
+        result = {
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "placed": [],
+            "reason": "nano_no_data",
+        }
+        save_text(f"{stamp}_orders.json", dumps_min(result))
+        return {"ts": stamp, **result}
 
     payload_kept = {"time": payload_full["time"], "eth": payload_full["eth"], "coins": kept}
-    if fallback_reason:
-        payload_kept["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
 
-    mini_text = ""
-    coins: List[Dict[str, Any]] = []
-    if kept:
-        pr_mini = build_prompts_mini(payload_kept)
-        rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
-        mini_text = extract_content(rsp_mini)
-        save_text(f"{stamp}_mini_output.json", mini_text)
-        coins = parse_mini_actions(mini_text)
+    pr_mini = build_prompts_mini(payload_kept)
+    rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
+    mini_text = extract_content(rsp_mini)
+    save_text(f"{stamp}_mini_output.json", mini_text)
+    coins: List[Dict[str, Any]] = parse_mini_actions(mini_text)
 
     coins = enrich_tp_qty(ex, coins, capital)
 
@@ -124,7 +125,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
-            qty_tp1 = rfloat(qty / 2, 8)
+            qty_tp1 = rfloat(qty * 0.2, 8)
             qty_tp2 = rfloat(qty - qty_tp1, 8)
             entry_order = ex.create_order(ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False})
             if side == "buy":
@@ -152,14 +153,12 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             )
 
     result = {"live": run_live, "capital": capital, "coins": coins, "placed": placed}
-    if fallback_reason:
-        result["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_orders.json", dumps_min(result))
     return {"ts": stamp, **result}
 
 
-def cancel_unpositioned_limits(exchange):
-    """Cancel non-reduceOnly limit orders for pairs without open positions."""
+def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
+    """Cancel non-reduceOnly limit orders for pairs without positions once stale (>10m)."""
 
     try:
         orders = exchange.fetch_open_orders()
@@ -167,6 +166,7 @@ def cancel_unpositioned_limits(exchange):
         return
 
     pos_pairs = get_open_position_pairs(exchange)
+    now_ms = time.time() * 1000
     for o in orders or []:
         try:
             if o.get("reduceOnly") or (o.get("type") or "").lower() != "limit":
@@ -175,10 +175,76 @@ def cancel_unpositioned_limits(exchange):
             pair = _norm_pair_from_symbol(symbol)
             if pair in pos_pairs:
                 continue
+            ts = o.get("timestamp") or (o.get("info") or {}).get("updateTime") or (o.get("info") or {}).get("time")
+            if ts is None:
+                continue
+            age_sec = (now_ms - float(ts)) / 1000.0
+            if age_sec < max_age_sec:
+                continue
             try:
                 exchange.cancel_order(o.get("id"), symbol)
             except Exception:
                 continue
+        except Exception:
+            continue
+
+
+def update_limits_from_file(exchange, path: str = "gpt_limits.json"):
+    """Read GPT-provided levels from a file and reset SL/TP orders."""
+
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception:
+        return
+    try:
+        positions = {
+            _norm_pair_from_symbol(p.get("symbol") or (p.get("info") or {}).get("symbol")): p
+            for p in (exchange.fetch_positions() or [])
+        }
+    except Exception:
+        positions = {}
+    for pair, params in (data or {}).items():
+        if not isinstance(params, dict):
+            continue
+        pos = positions.get(pair.upper())
+        if not pos:
+            continue
+        amt = pos.get("contracts") or pos.get("amount") or (pos.get("info") or {}).get("positionAmt")
+        try:
+            amt_val = float(amt)
+        except Exception:
+            continue
+        side = "buy" if amt_val > 0 else "sell"
+        qty = abs(amt_val)
+        sl = params.get("sl")
+        tp1 = params.get("tp1")
+        tp2 = params.get("tp2")
+        if None in (sl, tp1, tp2):
+            continue
+        symbol = to_ccxt_symbol(pair)
+        qty_tp1 = rfloat(qty * 0.2, 8)
+        qty_tp2 = rfloat(qty - qty_tp1, 8)
+        try:
+            orders = exchange.fetch_open_orders(symbol)
+            for o in orders or []:
+                try:
+                    exchange.cancel_order(o.get("id"), symbol)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        try:
+            if side == "buy":
+                exchange.create_order(symbol, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True})
+                exchange.create_order(symbol, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True})
+                exchange.create_order(symbol, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True})
+            else:
+                exchange.create_order(symbol, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True})
+                exchange.create_order(symbol, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True})
+                exchange.create_order(symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True})
         except Exception:
             continue
 
@@ -211,12 +277,48 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         except Exception:
             continue
         try:
+            ticker = exchange.fetch_ticker(symbol)
+            last = ticker.get("last")
+            if last is None:
+                last = (ticker.get("info") or {}).get("lastPrice")
+            last_price = float(last)
+        except Exception:
+            last_price = 0
+        try:
             orders = exchange.fetch_open_orders(symbol)
         except Exception:
             continue
         sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
         tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
-        if not sl_orders or len(tp_orders) >= 2:
+        if not sl_orders:
+            continue
+        if len(tp_orders) >= 2:
+            if side == "buy":
+                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
+                price_hit = last_price >= float(tp1_order.get("price") or 0)
+                exit_side = "sell"
+            else:
+                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0), reverse=True)[0]
+                price_hit = last_price <= float(tp1_order.get("price") or 0)
+                exit_side = "buy"
+            if not price_hit:
+                continue
+            qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
+            try:
+                exchange.cancel_order(tp1_order.get("id"), symbol)
+            except Exception:
+                pass
+            try:
+                exchange.create_order(symbol, "market", exit_side, qty_tp1, None, {"reduceOnly": True})
+            except Exception:
+                continue
+            try:
+                orders = exchange.fetch_open_orders(symbol)
+            except Exception:
+                continue
+            sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
+            tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+        if len(tp_orders) >= 2:
             continue
         sl_order = sl_orders[0]
         try:
@@ -254,18 +356,19 @@ def move_sl_to_entry_if_tp1_hit(exchange):
 
 
 def live_loop(limit: int = 20):
-    """Run the orchestrator live every 15 minutes and adjust SL every 5 minutes."""
+    """Run the orchestrator and adjust SL every minute."""
 
     ex = make_exchange()
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
         run(run_live=True, limit=limit, ex=ex)
-        scheduler.enter(15 * 60, 1, run_job)
+        scheduler.enter(60, 1, run_job)
 
     def sl_job():
         move_sl_to_entry_if_tp1_hit(ex)
-        scheduler.enter(5 * 60, 1, sl_job)
+        update_limits_from_file(ex)
+        scheduler.enter(60, 1, sl_job)
 
     scheduler.enter(0, 1, run_job)
     scheduler.enter(0, 1, sl_job)
