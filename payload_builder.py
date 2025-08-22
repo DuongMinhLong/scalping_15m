@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set
 
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 import pandas as pd
 
 from env_utils import compact, drop_empty, now_ms, rfloat
@@ -156,7 +159,9 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         symbols.append(s)
         if len(symbols) >= limit:
             break
-    coins = [coin_payload(exchange, s) for s in symbols]
+    func = partial(coin_payload, exchange)
+    with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
+        coins = list(ex.map(func, symbols))
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
         "eth": eth_bias(exchange),
