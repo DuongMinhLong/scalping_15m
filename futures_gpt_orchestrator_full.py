@@ -155,67 +155,88 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     return {"ts": stamp, **result}
 
 
-def move_sl_to_entry_if_tp1_hit(exchange, trades: Dict[str, Dict[str, Any]]):
-    """Move stop-loss to entry once price crosses TP1 for live trades."""
+def move_sl_to_entry_if_tp1_hit(exchange):
+    """Move stop-loss to entry once the first take-profit fills."""
 
-    for pair, info in list(trades.items()):
-        if info.get("sl_moved"):
-            continue
-        ccxt_sym = to_ccxt_symbol(pair)
+    try:
+        positions = exchange.fetch_positions()
+    except Exception:
+        return
+
+    for pos in positions or []:
+        symbol = pos.get("symbol") or (pos.get("info") or {}).get("symbol")
+        amt = pos.get("contracts")
+        if amt is None:
+            amt = pos.get("amount")
+        if amt is None:
+            amt = (pos.get("info") or {}).get("positionAmt")
         try:
-            price = float((exchange.fetch_ticker(ccxt_sym) or {}).get("last", 0))
+            amt_val = float(amt)
         except Exception:
             continue
-        side = info.get("side")
-        tp1 = info.get("tp1")
-        entry = info.get("entry")
-        qty = info.get("qty")
-        if side == "buy" and price >= tp1 or side == "sell" and price <= tp1:
-            try:
-                exchange.cancel_order(info.get("sl_id"), ccxt_sym)
-            except Exception:
-                pass
-            try:
-                if side == "buy":
-                    sl_order = exchange.create_order(
-                        ccxt_sym,
-                        "stop",
-                        "sell",
-                        qty,
-                        entry,
-                        {"stopPrice": entry, "reduceOnly": True},
-                    )
-                else:
-                    sl_order = exchange.create_order(
-                        ccxt_sym,
-                        "stop",
-                        "buy",
-                        qty,
-                        entry,
-                        {"stopPrice": entry, "reduceOnly": True},
-                    )
-                info["sl_id"] = sl_order.get("id")
-                info["sl"] = entry
-                info["sl_moved"] = True
-            except Exception:
-                continue
+        if amt_val == 0:
+            continue
+        side = "buy" if amt_val > 0 else "sell"
+        entry = pos.get("entryPrice") or (pos.get("info") or {}).get("entryPrice")
+        try:
+            entry_price = float(entry)
+        except Exception:
+            continue
+        try:
+            orders = exchange.fetch_open_orders(symbol)
+        except Exception:
+            continue
+        sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
+        tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+        if not sl_orders or len(tp_orders) >= 2:
+            continue
+        sl_order = sl_orders[0]
+        try:
+            sl_price = float(sl_order.get("price") or sl_order.get("stopPrice") or 0)
+        except Exception:
+            sl_price = 0
+        if abs(sl_price - entry_price) < 1e-8:
+            continue
+        try:
+            exchange.cancel_order(sl_order.get("id"), symbol)
+        except Exception:
+            pass
+        try:
+            qty = abs(amt_val)
+            if side == "buy":
+                exchange.create_order(
+                    symbol,
+                    "stop",
+                    "sell",
+                    qty,
+                    entry_price,
+                    {"stopPrice": entry_price, "reduceOnly": True},
+                )
+            else:
+                exchange.create_order(
+                    symbol,
+                    "stop",
+                    "buy",
+                    qty,
+                    entry_price,
+                    {"stopPrice": entry_price, "reduceOnly": True},
+                )
+        except Exception:
+            continue
 
 
 def live_loop(limit: int = 20):
     """Run the orchestrator live every 15 minutes and adjust SL every 5 minutes."""
 
     ex = make_exchange()
-    active: Dict[str, Dict[str, Any]] = {}
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
-        res = run(run_live=True, limit=limit, ex=ex)
-        for p in res.get("placed", []):
-            active[p["pair"]] = p
+        run(run_live=True, limit=limit, ex=ex)
         scheduler.enter(15 * 60, 1, run_job)
 
     def sl_job():
-        move_sl_to_entry_if_tp1_hit(ex, active)
+        move_sl_to_entry_if_tp1_hit(ex)
         scheduler.enter(5 * 60, 1, sl_job)
 
     scheduler.enter(0, 1, run_job)
