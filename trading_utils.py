@@ -115,6 +115,8 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
         qty = calc_qty(capital, rf, float(entry), float(sl), step)
+        if qty <= 0:
+            continue
         a["qty"] = rfloat(qty, 8)
         a["risk"] = rfloat(rf, 6)
         side = infer_side(float(entry), float(sl), float(tp2))
