@@ -83,8 +83,17 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     except Exception:
         keep = []
 
-    kept = [c for c in payload_full["coins"] if c["pair"] in keep] if keep else []
+    fallback_reason = None
+    kept: List[Dict[str, Any]] = []
+    if keep:
+        kept = [c for c in payload_full["coins"] if c["pair"] in keep]
+    elif payload_full["coins"]:
+        kept = payload_full["coins"]
+        fallback_reason = "keep_empty_used_all"
+
     payload_kept = {"time": payload_full["time"], "eth": payload_full["eth"], "coins": kept}
+    if fallback_reason:
+        payload_kept["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
 
     mini_text = ""
@@ -140,6 +149,8 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             )
 
     result = {"live": run_live, "capital": capital, "coins": coins, "placed": placed}
+    if fallback_reason:
+        result["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_orders.json", dumps_min(result))
     return {"ts": stamp, **result}
 
