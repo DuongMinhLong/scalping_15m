@@ -13,9 +13,7 @@ modules for clarity and maintainability.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import os
 import sched
 import time
 from threading import Thread
@@ -235,69 +233,6 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
             continue
 
 
-def update_limits_from_file(exchange, path: str = "gpt_limits.json"):
-    """Read GPT-provided levels from a file and reset SL/TP orders."""
-
-    if not os.path.exists(path):
-        return
-    try:
-        with open(path) as fh:
-            data = json.load(fh)
-    except Exception:
-        return
-    try:
-        positions = {
-            _norm_pair_from_symbol(p.get("symbol") or (p.get("info") or {}).get("symbol")): p
-            for p in (exchange.fetch_positions() or [])
-        }
-    except Exception:
-        positions = {}
-    for pair, params in (data or {}).items():
-        if not isinstance(params, dict):
-            continue
-        pos = positions.get(pair.upper())
-        if not pos:
-            continue
-        amt = pos.get("contracts") or pos.get("amount") or (pos.get("info") or {}).get("positionAmt")
-        try:
-            amt_val = float(amt)
-        except Exception:
-            continue
-        side = "buy" if amt_val > 0 else "sell"
-        qty = abs(amt_val)
-        sl = params.get("sl")
-        tp1 = params.get("tp1")
-        tp2 = params.get("tp2")
-        if None in (sl, tp1, tp2):
-            continue
-        symbol = to_ccxt_symbol(pair)
-        qty_tp1 = rfloat(qty * 0.2, 8)
-        qty_tp2 = rfloat(qty - qty_tp1, 8)
-        try:
-            orders = exchange.fetch_open_orders(symbol)
-            for o in orders or []:
-                try:
-                    exchange.cancel_order(o.get("id"), symbol)
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        try:
-            if side == "buy":
-                exchange.create_order(symbol, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True})
-                exchange.create_order(symbol, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True})
-                exchange.create_order(symbol, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True})
-            else:
-                exchange.create_order(symbol, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True})
-                exchange.create_order(symbol, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True})
-                exchange.create_order(symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True})
-        except Exception:
-            continue
-    try:
-        os.remove(path)  # xoá file sau khi xử lý để tránh lặp lại
-    except Exception:
-        pass
-
 
 def move_sl_to_entry_if_tp1_hit(exchange):
     """Move stop-loss to entry once the first take-profit fills."""
@@ -406,19 +341,18 @@ def move_sl_to_entry_if_tp1_hit(exchange):
 
 
 def live_loop(limit: int = 20):
-    """Run the orchestrator and adjust SL every minute."""
+    """Run the orchestrator every 15 minutes and adjust SL every 5 minutes."""
 
     ex = make_exchange()
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
         run(run_live=True, limit=limit, ex=ex)
-        scheduler.enter(60, 1, run_job)
+        scheduler.enter(900, 1, run_job)
 
     def sl_job():
         move_sl_to_entry_if_tp1_hit(ex)
-        update_limits_from_file(ex)
-        scheduler.enter(60, 1, sl_job)
+        scheduler.enter(300, 1, sl_job)
 
     scheduler.enter(0, 1, run_job)
     scheduler.enter(0, 1, sl_job)
