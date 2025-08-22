@@ -118,7 +118,8 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         a["qty"] = rfloat(qty, 8)
         a["risk"] = rfloat(rf, 6)
         side = infer_side(float(entry), float(sl), float(tp2))
-        a["side"] = side
-        out.append(a)
+        if side in {"buy", "sell"}:
+            a["side"] = side
+            out.append(a)
     return out
 
