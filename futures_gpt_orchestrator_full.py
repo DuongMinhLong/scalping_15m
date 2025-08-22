@@ -88,27 +88,26 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     except Exception:
         keep = []
 
-    fallback_reason = None
-    kept: List[Dict[str, Any]] = []
-    if keep:
-        kept = [c for c in payload_full["coins"] if c["pair"] in keep]
-    elif payload_full["coins"]:
-        kept = payload_full["coins"]
-        fallback_reason = "keep_empty_used_all"
+    kept: List[Dict[str, Any]] = [c for c in payload_full["coins"] if c["pair"] in keep]
+    if not kept:
+        result = {
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "placed": [],
+            "reason": "nano_no_data",
+        }
+        save_text(f"{stamp}_orders.json", dumps_min(result))
+        return {"ts": stamp, **result}
 
     payload_kept = {"time": payload_full["time"], "eth": payload_full["eth"], "coins": kept}
-    if fallback_reason:
-        payload_kept["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
 
-    mini_text = ""
-    coins: List[Dict[str, Any]] = []
-    if kept:
-        pr_mini = build_prompts_mini(payload_kept)
-        rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
-        mini_text = extract_content(rsp_mini)
-        save_text(f"{stamp}_mini_output.json", mini_text)
-        coins = parse_mini_actions(mini_text)
+    pr_mini = build_prompts_mini(payload_kept)
+    rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
+    mini_text = extract_content(rsp_mini)
+    save_text(f"{stamp}_mini_output.json", mini_text)
+    coins: List[Dict[str, Any]] = parse_mini_actions(mini_text)
 
     coins = enrich_tp_qty(ex, coins, capital)
 
@@ -154,8 +153,6 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             )
 
     result = {"live": run_live, "capital": capital, "coins": coins, "placed": placed}
-    if fallback_reason:
-        result["fallback_reason"] = fallback_reason
     save_text(f"{stamp}_orders.json", dumps_min(result))
     return {"ts": stamp, **result}
 
