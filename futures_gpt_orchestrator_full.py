@@ -13,6 +13,8 @@ modules for clarity and maintainability.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import time
 import sched
 from typing import Any, Dict, List
@@ -124,7 +126,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
-            qty_tp1 = rfloat(qty / 2, 8)
+            qty_tp1 = rfloat(qty * 0.2, 8)
             qty_tp2 = rfloat(qty - qty_tp1, 8)
             entry_order = ex.create_order(ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False})
             if side == "buy":
@@ -183,6 +185,66 @@ def cancel_unpositioned_limits(exchange):
             continue
 
 
+def update_limits_from_file(exchange, path: str = "gpt_limits.json"):
+    """Read GPT-provided levels from a file and reset SL/TP orders."""
+
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception:
+        return
+    try:
+        positions = {
+            _norm_pair_from_symbol(p.get("symbol") or (p.get("info") or {}).get("symbol")): p
+            for p in (exchange.fetch_positions() or [])
+        }
+    except Exception:
+        positions = {}
+    for pair, params in (data or {}).items():
+        if not isinstance(params, dict):
+            continue
+        pos = positions.get(pair.upper())
+        if not pos:
+            continue
+        amt = pos.get("contracts") or pos.get("amount") or (pos.get("info") or {}).get("positionAmt")
+        try:
+            amt_val = float(amt)
+        except Exception:
+            continue
+        side = "buy" if amt_val > 0 else "sell"
+        qty = abs(amt_val)
+        sl = params.get("sl")
+        tp1 = params.get("tp1")
+        tp2 = params.get("tp2")
+        if None in (sl, tp1, tp2):
+            continue
+        symbol = to_ccxt_symbol(pair)
+        qty_tp1 = rfloat(qty * 0.2, 8)
+        qty_tp2 = rfloat(qty - qty_tp1, 8)
+        try:
+            orders = exchange.fetch_open_orders(symbol)
+            for o in orders or []:
+                try:
+                    exchange.cancel_order(o.get("id"), symbol)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        try:
+            if side == "buy":
+                exchange.create_order(symbol, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True})
+                exchange.create_order(symbol, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True})
+                exchange.create_order(symbol, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True})
+            else:
+                exchange.create_order(symbol, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True})
+                exchange.create_order(symbol, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True})
+                exchange.create_order(symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True})
+        except Exception:
+            continue
+
+
 def move_sl_to_entry_if_tp1_hit(exchange):
     """Move stop-loss to entry once the first take-profit fills."""
 
@@ -211,12 +273,48 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         except Exception:
             continue
         try:
+            ticker = exchange.fetch_ticker(symbol)
+            last = ticker.get("last")
+            if last is None:
+                last = (ticker.get("info") or {}).get("lastPrice")
+            last_price = float(last)
+        except Exception:
+            last_price = 0
+        try:
             orders = exchange.fetch_open_orders(symbol)
         except Exception:
             continue
         sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
         tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
-        if not sl_orders or len(tp_orders) >= 2:
+        if not sl_orders:
+            continue
+        if len(tp_orders) >= 2:
+            if side == "buy":
+                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
+                price_hit = last_price >= float(tp1_order.get("price") or 0)
+                exit_side = "sell"
+            else:
+                tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0), reverse=True)[0]
+                price_hit = last_price <= float(tp1_order.get("price") or 0)
+                exit_side = "buy"
+            if not price_hit:
+                continue
+            qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
+            try:
+                exchange.cancel_order(tp1_order.get("id"), symbol)
+            except Exception:
+                pass
+            try:
+                exchange.create_order(symbol, "market", exit_side, qty_tp1, None, {"reduceOnly": True})
+            except Exception:
+                continue
+            try:
+                orders = exchange.fetch_open_orders(symbol)
+            except Exception:
+                continue
+            sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
+            tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+        if len(tp_orders) >= 2:
             continue
         sl_order = sl_orders[0]
         try:
@@ -254,18 +352,19 @@ def move_sl_to_entry_if_tp1_hit(exchange):
 
 
 def live_loop(limit: int = 20):
-    """Run the orchestrator live every 15 minutes and adjust SL every 5 minutes."""
+    """Run the orchestrator and adjust SL every minute."""
 
     ex = make_exchange()
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
         run(run_live=True, limit=limit, ex=ex)
-        scheduler.enter(15 * 60, 1, run_job)
+        scheduler.enter(60, 1, run_job)
 
     def sl_job():
         move_sl_to_entry_if_tp1_hit(ex)
-        scheduler.enter(5 * 60, 1, sl_job)
+        update_limits_from_file(ex)
+        scheduler.enter(60, 1, sl_job)
 
     scheduler.enter(0, 1, run_job)
     scheduler.enter(0, 1, sl_job)
