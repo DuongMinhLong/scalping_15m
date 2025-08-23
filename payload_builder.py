@@ -29,13 +29,12 @@ from indicators import add_indicators, trend_lbl, detect_sr_levels
 
 logger = logging.getLogger(__name__)
 
-MAX_NEWS_LEN = 200
 
-
-def _truncate(text: str, limit: int = MAX_NEWS_LEN) -> str:
-    if not text:
-        return ""
-    return text[:limit]
+def _truncate(s: str | None, max_len: int = 120) -> str | None:
+    if not s:
+        return None
+    s = " ".join(str(s).split())
+    return s[:max_len].rstrip() + ("…" if len(s) > max_len else "")
 
 
 def session_meta() -> Dict[str, int | str]:
@@ -62,12 +61,10 @@ def session_meta() -> Dict[str, int | str]:
 
 
 def news_snapshot() -> Dict[str, str]:
-    """Fetch macro, crypto and unlock news from remote API.
+    """Fetch top-5 crypto headlines from CryptoPanic and return a compact string.
 
-    The function expects an API key in the ``NEWS_API_KEY`` environment variable
-    and performs a HTTP GET request to retrieve a JSON payload containing the
-    news fields. If the request fails for any reason an empty dictionary is
-    returned.
+    - Requires ``NEWS_API_KEY`` in env (CryptoPanic auth_token).
+    - Optimized for tokens: returns {"news": "t1 • t2 • ..."} with max 5 items.
     """
 
     api_key = os.getenv("NEWS_API_KEY")
@@ -77,20 +74,38 @@ def news_snapshot() -> Dict[str, str]:
 
     try:
         resp = requests.get(
-            "https://cryptopanic.com/api/v1/news",
-            params={"auth_token": api_key},
+            "https://cryptopanic.com/api/v1/posts/",
+            params={
+                "auth_token": api_key,
+                "public": True,
+                "kind": "news",
+                "filter": "hot",
+                "regions": "en",
+            },
             timeout=10,
+            headers={"Accept": "application/json"},
         )
         resp.raise_for_status()
-        data = resp.json()
+        payload = resp.json() or {}
+        results: List[dict] = payload.get("results", [])
     except Exception as exc:  # pragma: no cover - network errors
         logger.error("Failed fetching news: %s", exc)
         return {}
 
-    macro = _truncate(data.get("macro"))
-    crypto = _truncate(data.get("crypto"))
-    unlock = _truncate(data.get("unlock"))
-    return drop_empty({"macro": macro, "crypto": crypto, "unlock": unlock})
+    headlines: List[str] = []
+    for item in results[:5]:
+        title = (item.get("title") or "").strip()
+        domain = (
+            (item.get("domain") or (item.get("source") or {}).get("title") or "").strip()
+        )
+        if not title:
+            continue
+        text = f"{title} – {domain}" if domain else title
+        text = _truncate(text, 120)
+        if text:
+            headlines.append(text)
+
+    return drop_empty({"news": " • ".join(headlines)})
 
 
 CACHE_H1: Dict[str, pd.DataFrame] = {}

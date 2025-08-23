@@ -18,20 +18,18 @@ class DummyResponse:
 
 
 def test_news_snapshot(monkeypatch):
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url, params=None, timeout=None, headers=None):
         assert "auth_token" in params
         data = {
-            "macro": "m" * 300,
-            "crypto": "c" * 10,
-            "unlock": "u",
+            "results": [
+                {"title": "A", "domain": "d1"},
+                {"title": "B" * 130, "domain": "d2"},
+            ]
         }
         return DummyResponse(data)
 
     monkeypatch.setenv("NEWS_API_KEY", "key")
     monkeypatch.setattr(requests, "get", fake_get)
     snap = payload_builder.news_snapshot()
-    assert snap == {
-        "macro": "m" * payload_builder.MAX_NEWS_LEN,
-        "crypto": "c" * 10,
-        "unlock": "u",
-    }
+    long_headline = "B" * 120 + "…"
+    assert snap == {"news": f"A – d1 • {long_headline}"}
