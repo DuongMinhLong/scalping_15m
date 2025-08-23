@@ -29,7 +29,7 @@ from env_utils import (
 from exchange_utils import make_exchange
 from openai_client import extract_content, send_openai, try_extract_json
 from payload_builder import build_payload
-from positions import get_open_position_pairs
+from positions import get_open_positions_with_risk
 from prompts import build_prompts_mini, build_prompts_nano
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
@@ -128,7 +128,8 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
     except Exception:
         capital = 0.0
 
-    pos_pairs = call_locked(get_open_position_pairs, ex)
+    pos_pairs, risk_map = call_locked(get_open_positions_with_risk, ex)
+    active_risk_positions = sum(1 for r in risk_map.values() if not r)
     payload_full = call_locked(build_payload, ex, limit, exclude_pairs=pos_pairs)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
@@ -176,11 +177,19 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
         save_text(f"{stamp}_mini_output.json", mini_text)
         coins = parse_mini_actions(mini_text)
 
+    max_new = 10 - active_risk_positions
+    if max_new <= 0:
+        coins = []
+        print("max position limit reached; skipping new orders")
+    elif len(coins) > max_new:
+        print(f"limiting new orders to {max_new} due to position cap")
+        coins = coins[:max_new]
+
     coins = call_locked(enrich_tp_qty, ex, coins, capital)
 
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
-        pos_pairs_live = call_locked(get_open_position_pairs, ex)
+        pos_pairs_live, _ = call_locked(get_open_positions_with_risk, ex)
         for c in coins:
             pair = (c.get("pair") or "").upper()
             side = c.get("side")
