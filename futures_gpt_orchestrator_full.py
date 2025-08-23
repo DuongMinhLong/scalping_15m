@@ -95,14 +95,13 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     except Exception:
         capital = 0.0
 
-    pos_pairs = get_open_position_pairs(ex)
-
     payload_full = build_payload(ex, limit)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
+    pos_pairs = {(p.get("pair") or "").upper() for p in payload_full.get("positions", [])}
     save_text(
         f"{stamp}_positions_excluded.json",
-        dumps_min({"positions": sorted(list(pos_pairs))}),
+        dumps_min({"positions": payload_full.get("positions", [])}),
     )
 
     payload_kept = {
@@ -121,22 +120,41 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
                     "live": run_live,
                     "capital": capital,
                     "coins": [],
+                    "close_all": [],
+                    "close_partial": [],
                     "placed": [],
+                    "closed": [],
                     "reason": "no_coins_after_exclude",
                 }
             ),
         )
-        return {"ts": stamp, "capital": capital, "coins": [], "placed": []}
+        return {
+            "ts": stamp,
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "close_all": [],
+            "close_partial": [],
+            "placed": [],
+            "closed": [],
+        }
 
     pr_mini = build_prompts_mini(payload_kept)
     rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
     mini_text = extract_content(rsp_mini)
     save_text(f"{stamp}_mini_output.json", mini_text)
+    acts = parse_mini_actions(mini_text)
     coins: List[Dict[str, Any]] = [
-        c for c in parse_mini_actions(mini_text) if (c.get("pair") or "").upper() not in pos_pairs
+        c for c in acts.get("coins", []) if (c.get("pair") or "").upper() not in pos_pairs
     ]
 
     coins = enrich_tp_qty(ex, coins, capital)
+    close_all = [(c.get("pair") or "").upper() for c in acts.get("close_all", [])]
+    close_partial = [
+        {"pair": (c.get("pair") or "").upper(), "pct": c.get("pct")}
+        for c in acts.get("close_partial", [])
+        if (c.get("pair") and isinstance(c.get("pct"), (int, float)))
+    ]
 
     if coins:
         limits = {
@@ -180,7 +198,69 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
                 }
             )
 
-    result = {"live": run_live, "capital": capital, "coins": coins, "placed": placed}
+    closed: List[Dict[str, Any]] = []
+    if run_live and (close_all or close_partial):
+        try:
+            positions = ex.fetch_positions()
+        except Exception:
+            positions = []
+        pos_map = {}
+        for p in positions or []:
+            sym = p.get("symbol") or (p.get("info") or {}).get("symbol")
+            pair = _norm_pair_from_symbol(sym)
+            amt = p.get("contracts")
+            if amt is None:
+                amt = p.get("amount")
+            if amt is None:
+                amt = (p.get("info") or {}).get("positionAmt")
+            try:
+                amt_val = float(amt)
+            except Exception:
+                continue
+            if amt_val == 0:
+                continue
+            side = "buy" if amt_val > 0 else "sell"
+            pos_map[pair] = {"side": side, "qty": abs(amt_val)}
+
+        for pair in close_all:
+            pos = pos_map.get(pair)
+            if not pos:
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            side = "sell" if pos["side"] == "buy" else "buy"
+            qty = pos["qty"]
+            try:
+                ex.create_order(ccxt_sym, "market", side, qty, None, {"reduceOnly": True})
+                closed.append({"pair": pair, "pct": 100.0, "qty": qty})
+            except Exception:
+                continue
+
+        for item in close_partial:
+            pair = item.get("pair")
+            pct = float(item.get("pct", 0))
+            pos = pos_map.get(pair)
+            if not pos or pct <= 0:
+                continue
+            qty = pos["qty"] * pct / 100.0
+            if qty <= 0:
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            side = "sell" if pos["side"] == "buy" else "buy"
+            try:
+                ex.create_order(ccxt_sym, "market", side, qty, None, {"reduceOnly": True})
+                closed.append({"pair": pair, "pct": pct, "qty": rfloat(qty, 8)})
+            except Exception:
+                continue
+
+    result = {
+        "live": run_live,
+        "capital": capital,
+        "coins": coins,
+        "close_all": close_all,
+        "close_partial": close_partial,
+        "placed": placed,
+        "closed": closed,
+    }
     save_text(f"{stamp}_orders.json", dumps_min(result))
     return {"ts": stamp, **result}
 

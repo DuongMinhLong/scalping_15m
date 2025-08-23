@@ -26,6 +26,7 @@ from exchange_utils import (
     top_by_qv,
 )
 from indicators import add_indicators, trend_lbl, detect_sr_levels
+from positions import positions_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -275,5 +276,6 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         "eth": eth_bias(exchange),
         "news": news_snapshot(),
         "coins": [drop_empty(c) for c in coins],
+        "positions": positions_snapshot(exchange),
     }
 

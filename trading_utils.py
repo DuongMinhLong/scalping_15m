@@ -10,18 +10,28 @@ from openai_client import try_extract_json
 from typing import Iterable
 
 
-def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
-    """Phân tích output của mô hình MINI thành danh sách hành động."""
+def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Parse MINI model JSON output into open/close instructions.
+
+    Returns a dict with keys ``coins``, ``close_all`` and ``close_partial``.
+    ``coins`` contains dicts with trading instructions (entry, SL, TP2, risk).
+    ``close_all`` is a list of {"pair"} dicts. ``close_partial`` is a list of
+    {"pair", "pct"} dicts where ``pct`` is a percentage between 0 and 100.
+    Invalid entries are ignored silently.
+    """
 
     data = try_extract_json(text)
-    arr = data.get("coins", []) if isinstance(data, dict) else []
-    out: List[Dict[str, Any]] = []
-    for item in arr:
+    coins_in = data.get("coins", []) if isinstance(data, dict) else []
+    close_all_in = data.get("close_all", []) if isinstance(data, dict) else []
+    close_part_in = data.get("close_partial", []) if isinstance(data, dict) else []
+
+    coins: List[Dict[str, Any]] = []
+    for item in coins_in:
         if not isinstance(item, dict):
-            continue  # bỏ qua phần tử không phải dict
+            continue
         pair = (item.get("pair") or "").upper().replace("/", "")
         if not pair:
-            continue  # thiếu mã giao dịch
+            continue
         entry = item.get("entry")
         sl = item.get("sl")
         tp2 = item.get("tp2")
@@ -32,16 +42,39 @@ def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
             tp2 = float(tp2) if tp2 not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
         except Exception:
-            continue  # dữ liệu số không hợp lệ
+            continue
         if None in (entry, sl) or entry == sl:
-            continue  # entry và SL phải có và khác nhau
+            continue
         if risk is not None and not (0 < risk < 1):
-            continue  # rủi ro phải trong (0,1)
+            continue
         if tp2 is not None:
             if (entry > sl and tp2 <= entry) or (entry < sl and tp2 >= entry):
-                continue  # TP2 phải cùng hướng với entry-SL
-        out.append({"pair": pair, "entry": entry, "sl": sl, "tp2": tp2, "risk": risk})
-    return out
+                continue
+        coins.append({"pair": pair, "entry": entry, "sl": sl, "tp2": tp2, "risk": risk})
+
+    close_all: List[Dict[str, Any]] = []
+    for item in close_all_in:
+        if not isinstance(item, dict):
+            continue
+        pair = (item.get("pair") or "").upper().replace("/", "")
+        if pair:
+            close_all.append({"pair": pair})
+
+    close_partial: List[Dict[str, Any]] = []
+    for item in close_part_in:
+        if not isinstance(item, dict):
+            continue
+        pair = (item.get("pair") or "").upper().replace("/", "")
+        pct = item.get("pct")
+        try:
+            pct = float(pct)
+        except Exception:
+            continue
+        if not pair or not (0 < pct <= 100):
+            continue
+        close_partial.append({"pair": pair, "pct": pct})
+
+    return {"coins": coins, "close_all": close_all, "close_partial": close_partial}
 
 
 KNOWN_QUOTES: Iterable[str] = (
