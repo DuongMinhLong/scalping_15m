@@ -96,6 +96,22 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         capital = 0.0
 
     pos_pairs = get_open_position_pairs(ex)
+    if pos_pairs:
+        stamp = ts_prefix()
+        save_text(
+            f"{stamp}_orders.json",
+            dumps_min(
+                {
+                    "live": run_live,
+                    "capital": capital,
+                    "coins": [],
+                    "placed": [],
+                    "reason": "existing_positions",
+                }
+            ),
+        )
+        return {"ts": stamp, "capital": capital, "coins": [], "placed": []}
+
     payload_full = build_payload(ex, limit, exclude_pairs=pos_pairs)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))

@@ -1,8 +1,10 @@
 import types
 import pathlib
 import sys
+import os
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+os.environ.setdefault("OPENAI_API_KEY", "test")
 import trading_utils
 
 
