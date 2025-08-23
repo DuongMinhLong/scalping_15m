@@ -76,8 +76,13 @@ def fetch_ohlcv_df(
     return df.set_index("ts").sort_index()
 
 
-def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) -> Dict:
-    """Return a small snapshot of the order book with basic statistics."""
+def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 20) -> Dict:
+    """Return a small snapshot of the order book with basic statistics.
+
+    The default ``depth`` has been increased compared to the original
+    scalping version to provide a broader view that suits the slower 1h
+    timeframe better.
+    """
 
     try:
         ob = exchange.fetch_order_book(symbol, limit=depth)
@@ -99,6 +104,31 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
             "ask_vol": rfloat(ask_vol, 6),
             "imbalance": rfloat(imb, 6),
         }
+    except Exception:
+        return {}
+
+
+def funding_rate(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return current funding rate and next funding time for ``symbol``.
+
+    The function is intentionally lightweight and returns an empty dictionary
+    on any exchange/API error.  The timestamp is expressed in milliseconds.
+    """
+
+    try:
+        info = exchange.fetch_funding_rate(symbol)
+        rate = info.get("fundingRate")
+        next_time = info.get("nextFundingTime")
+        out: Dict[str, float | int] = {}
+        if rate is not None:
+            try:
+                rate_val = float(rate)
+            except Exception:
+                rate_val = None
+            out["rate"] = rfloat(rate_val, 6)
+        if next_time is not None:
+            out["next_funding"] = int(next_time)
+        return out
     except Exception:
         return {}
 

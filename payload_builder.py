@@ -13,7 +13,12 @@ import pandas as pd
 from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
-from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
+from exchange_utils import (
+    fetch_ohlcv_df,
+    orderbook_snapshot,
+    top_by_qv,
+    funding_rate,
+)
 from indicators import add_indicators, trend_lbl
 
 logger = logging.getLogger(__name__)
@@ -156,7 +161,8 @@ def coin_payload(exchange, symbol: str) -> Dict:
         "h1": build_1h(h1),
         "h4": build_snap(h4),
         "d1": build_snap(d1),
-        "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
+        "orderbook": orderbook_snapshot(exchange, symbol),
+        "funding": funding_rate(exchange, symbol),
     }
     return drop_empty(payload)
 
