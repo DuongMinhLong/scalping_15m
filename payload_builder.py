@@ -14,7 +14,7 @@ from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
-from indicators import add_indicators, trend_lbl
+from indicators import add_indicators, trend_lbl, detect_sr_levels
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ def build_1h(df: pd.DataFrame) -> Dict:
         "swing_high": swing_high,
         "swing_low": swing_low,
     }
+    sr_levels = [rfloat(lvl) for lvl in detect_sr_levels(data, lookback=5)]
     ind = {
         "ema20": compact(data["ema20"].tail(20).tolist()),
         "ema50": compact(data["ema50"].tail(20).tolist()),
@@ -94,7 +95,7 @@ def build_1h(df: pd.DataFrame) -> Dict:
         "atr14": compact(data["atr14"].tail(20).tolist()),
         "vol_spike": compact(data["vol_spike"].tail(20).tolist()),
     }
-    return {"ohlcv": ohlcv20, "ind": ind, "key": key}
+    return {"ohlcv": ohlcv20, "ind": ind, "key": key, "sr_levels": sr_levels}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:

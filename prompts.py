@@ -8,8 +8,8 @@ PROMPT_SYS_MINI = (
     'No prose. No markdown. If none, return {"coins":[]}.'
 )
 PROMPT_USER_MINI = (
-    'Phân tích 1h (20 ohlcv+chỉ báo), H4/D1 snapshot, ETH bias, session, orderbook. '
-    'Dùng price action, cấu trúc HH/HL/LH/LL, breakout, divergence, momentum/vol_spike, key level, MTF. '
+    'Phân tích 1h (20 ohlcv+chỉ báo+sr_levels), H4/D1 snapshot, ETH bias, session, orderbook. '
+    'Dùng price action, cấu trúc HH/HL/LH/LL, breakout, divergence, momentum/vol_spike, sr_levels, key level, MTF. '
     'Output JSON: {"coins":[{"pair":"SYMBOL","entry":0.0,"sl":0.0,"tp2":0.0,"risk":0.0},...]}. '
     'Ưu tiên RR>=1.8; cho phép <1.8 khi PA+volume cực mạnh & đồng thuận đa khung. H4/D1 cùng hướng 1h; ETH cùng hướng thêm điểm; '
     'cho phép ngược pha khi có đảo chiều rõ + vol_spike. Session: Asia siết/US nới/EU tb; mins_to_close<=15 & yếu → bỏ. '
