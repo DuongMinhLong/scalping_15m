@@ -15,6 +15,7 @@ PROMPT_USER_MINI = (
     "orderbook, funding/OI/CVD/liquidation, news. "
     "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp2\":0.0}, ...]}. "
     "Không có tín hiệu → {\"coins\":[]}. "
+    "Chỉ chọn LIMIT entry tối ưu (best limit entry). "
     "DATA:{payload}"
 )
 
