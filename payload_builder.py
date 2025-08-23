@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Set
+from typing import Callable, Dict, List, Set
 
 import pandas as pd
+from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
@@ -35,8 +36,24 @@ def session_meta() -> Dict[str, int | str]:
     }
 
 
-CACHE_H1: Dict[str, pd.DataFrame] = {}
-CACHE_H4: Dict[str, pd.DataFrame] = {}
+class ThreadSafeCache:
+    """Thread-safe cache for storing OHLCV DataFrames by symbol."""
+
+    def __init__(self) -> None:
+        self._cache: Dict[str, pd.DataFrame] = {}
+        self._lock = Lock()
+
+    def get(self, symbol: str, loader: Callable[[], pd.DataFrame]) -> pd.DataFrame:
+        """Return cached DataFrame for ``symbol`` or load it if missing."""
+
+        with self._lock:
+            if symbol not in self._cache:
+                self._cache[symbol] = loader()
+            return self._cache[symbol]
+
+
+CACHE_H1 = ThreadSafeCache()
+CACHE_H4 = ThreadSafeCache()
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -110,15 +127,17 @@ def coin_payload(exchange, symbol: str) -> Dict:
     """Build payload for a single symbol including multi-timeframe data."""
 
     df15 = fetch_ohlcv_df(exchange, symbol, "15m", 300)
-    if symbol not in CACHE_H1:
-        CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
-    if symbol not in CACHE_H4:
-        CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
+    df_h1 = CACHE_H1.get(
+        symbol, lambda: fetch_ohlcv_df(exchange, symbol, "1h", 300)
+    )
+    df_h4 = CACHE_H4.get(
+        symbol, lambda: fetch_ohlcv_df(exchange, symbol, "4h", 300)
+    )
     payload = {
         "pair": norm_pair_symbol(symbol),
         "c15": build_15m(df15),
-        "h1": build_snap(CACHE_H1[symbol]),
-        "h4": build_snap(CACHE_H4[symbol]),
+        "h1": build_snap(df_h1),
+        "h4": build_snap(df_h4),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
@@ -128,11 +147,13 @@ def eth_bias(exchange) -> Dict:
     """Convenience wrapper returning ETH H1/H4 snapshots."""
 
     symbol = "ETH/USDT"
-    if symbol not in CACHE_H1:
-        CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
-    if symbol not in CACHE_H4:
-        CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
-    return {"h1": build_snap(CACHE_H1[symbol]), "h4": build_snap(CACHE_H4[symbol])}
+    df_h1 = CACHE_H1.get(
+        symbol, lambda: fetch_ohlcv_df(exchange, symbol, "1h", 300)
+    )
+    df_h4 = CACHE_H4.get(
+        symbol, lambda: fetch_ohlcv_df(exchange, symbol, "4h", 300)
+    )
+    return {"h1": build_snap(df_h1), "h4": build_snap(df_h4)}
 
 
 def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = None) -> Dict:
