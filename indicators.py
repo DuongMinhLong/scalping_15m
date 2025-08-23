@@ -79,3 +79,43 @@ def trend_lbl(e20: float, e50: float, e200: float, macd_val: float, rsi_val: flo
         return "down"
     return "flat"
 
+
+def detect_sr_levels(df: pd.DataFrame, lookback: int = 5) -> list[float]:
+    """Detect simple support/resistance levels.
+
+    The function looks for pivot highs/lows within a ``lookback`` window and
+    merges nearby levels to highlight zones that price has reacted to multiple
+    times.  It returns a sorted list of levels as floats.
+    """
+
+    if df is None or df.empty:
+        return []
+
+    lb = max(1, int(lookback))
+    data = df.tail(lb * 5).copy()
+    highs = data["high"].reset_index(drop=True)
+    lows = data["low"].reset_index(drop=True)
+
+    pivots: list[float] = []
+    for i in range(lb, len(data) - lb):
+        h = highs.iloc[i]
+        if h == highs.iloc[i - lb : i + lb + 1].max():
+            pivots.append(float(h))
+        l = lows.iloc[i]
+        if l == lows.iloc[i - lb : i + lb + 1].min():
+            pivots.append(float(l))
+
+    if not pivots:
+        return []
+
+    pivots.sort()
+    avg_range = (highs - lows).mean()
+    tol = float(avg_range * 0.5) if avg_range > 0 else 0.0
+    merged: list[float] = []
+    for lvl in pivots:
+        if not merged or abs(lvl - merged[-1]) > tol:
+            merged.append(lvl)
+        else:
+            merged[-1] = (merged[-1] + lvl) / 2
+    return merged
+
