@@ -165,7 +165,8 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     """Build the full payload used by the orchestrator."""
 
     exclude_pairs = exclude_pairs or set()
-    symbols_raw = top_by_qv(exchange, limit * 3)
+    # Prioritize symbols with the largest 24h percentage change
+    symbols_raw = top_by_24h_change(exchange, limit * 3)
     symbols: List[str] = []
     for s in symbols_raw:
         pair = s.replace("/", "").upper()
@@ -175,7 +176,8 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         if len(symbols) >= limit:
             break
     if len(symbols) < limit:
-        fallback_raw = top_by_24h_change(exchange, limit * 3)
+        # If not enough, fill the remainder with top quote-volume symbols
+        fallback_raw = top_by_qv(exchange, limit * 3)
         for s in fallback_raw:
             pair = s.replace("/", "").upper()
             if pair in exclude_pairs or s in symbols:
