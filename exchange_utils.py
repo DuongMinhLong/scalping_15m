@@ -7,6 +7,7 @@ from typing import Dict, List
 
 import ccxt
 import pandas as pd
+import requests
 
 from env_utils import rfloat
 
@@ -59,6 +60,28 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
         return [s for s, _ in scored[:limit]]
     except Exception:
         return symbols[:limit]
+
+
+def top_by_market_cap(limit: int = 30) -> List[str]:
+    """Return top coin symbols sorted by market cap using the CoinGecko API."""
+
+    try:
+        resp = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": limit,
+                "page": 1,
+                "sparkline": "false",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json() or []
+        return [str(item.get("symbol", "")).upper() for item in data]
+    except Exception:
+        return []
 
 
 def fetch_ohlcv_df(

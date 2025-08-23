@@ -104,15 +104,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         dumps_min({"positions": payload_full.get("positions", [])}),
     )
 
-    payload_kept = {
-        **payload_full,
-        "coins": [
-            c for c in payload_full.get("coins", []) if c.get("pair") not in pos_pairs
-        ],
-    }
-    save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
-
-    if not payload_kept["coins"]:
+    if not payload_full.get("coins") and not payload_full.get("positions"):
         save_text(
             f"{stamp}_orders.json",
             dumps_min(
@@ -124,7 +116,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
                     "close_partial": [],
                     "placed": [],
                     "closed": [],
-                    "reason": "no_coins_after_exclude",
+                    "reason": "no_coins_or_positions",
                 }
             ),
         )
@@ -139,7 +131,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
             "closed": [],
         }
 
-    pr_mini = build_prompts_mini(payload_kept)
+    pr_mini = build_prompts_mini(payload_full)
     rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
     mini_text = extract_content(rsp_mini)
     save_text(f"{stamp}_mini_output.json", mini_text)
