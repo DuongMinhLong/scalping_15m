@@ -13,6 +13,7 @@ modules for clarity and maintainability.
 from __future__ import annotations
 
 import argparse
+import threading
 from typing import Any, Dict, List
 
 from env_utils import (
@@ -32,6 +33,15 @@ from prompts import build_prompts_mini, build_prompts_nano
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
 
+exchange_lock = threading.Lock()
+
+
+def call_locked(func, *args, **kwargs):
+    """Call ``func`` with ``exchange_lock`` held to ensure thread safety."""
+    with exchange_lock:
+        return func(*args, **kwargs)
+
+
 def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
 
@@ -40,13 +50,13 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
     ex = make_exchange()
 
     try:
-        bal = ex.fetch_balance()
+        bal = call_locked(ex.fetch_balance)
         capital = float((bal.get("total") or {}).get("USDT", 0.0))
     except Exception:
         capital = 0.0
 
-    pos_pairs = get_open_position_pairs(ex)
-    payload_full = build_payload(ex, limit, exclude_pairs=pos_pairs)
+    pos_pairs = call_locked(get_open_position_pairs, ex)
+    payload_full = call_locked(build_payload, ex, limit, exclude_pairs=pos_pairs)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     save_text(
@@ -93,11 +103,11 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
         save_text(f"{stamp}_mini_output.json", mini_text)
         coins = parse_mini_actions(mini_text)
 
-    coins = enrich_tp_qty(ex, coins, capital)
+    coins = call_locked(enrich_tp_qty, ex, coins, capital)
 
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
-        pos_pairs_live = get_open_position_pairs(ex)
+        pos_pairs_live = call_locked(get_open_position_pairs, ex)
         for c in coins:
             pair = (c.get("pair") or "").upper()
             side = c.get("side")
@@ -111,7 +121,8 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
                 continue
             placed.append({"pair": pair, "side": side, "entry": entry, "sl": sl, "tp": tp, "qty": qty})
             ccxt_sym = to_ccxt_symbol(pair)
-            ex.create_order(
+            call_locked(
+                ex.create_order,
                 ccxt_sym,
                 "limit",
                 "buy" if side == "buy" else "sell",
