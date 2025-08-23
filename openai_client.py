@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import os
 import re
+from threading import Lock
 from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
 
+CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+CLIENT_LOCK = Lock()
+
+
 def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
     """Send a chat completion request and return the raw response dict."""
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     body = {
         "model": model,
         "messages": [
@@ -21,7 +25,8 @@ def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
         ],
         "response_format": {"type": "text"},
     }
-    resp = client.chat.completions.create(**body)
+    with CLIENT_LOCK:
+        resp = CLIENT.chat.completions.create(**body)
     try:
         return resp.to_dict()
     except Exception:
