@@ -13,7 +13,7 @@ PROMPT_USER_MINI = (
     "Dữ liệu đầy đủ dưới đây (không bỏ sót bất kỳ trường nào). "
     "Phân tích toàn bộ như 1 trader chuyên nghiệp, kết hợp price action, đa khung (1H/H4/D1), ETH bias, "
     "orderbook, funding/OI/CVD/liquidation, news. "
-    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp2\":0.0,\"risk\":0.0}, ...]}. "
+    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp2\":0.0}, ...]}. "
     "Không có tín hiệu → {\"coins\":[]}. "
     "DATA:{payload}"
 )
