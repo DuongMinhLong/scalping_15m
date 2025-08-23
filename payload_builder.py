@@ -10,8 +10,10 @@ from functools import partial
 
 import logging
 import os
-import pandas as pd
 from threading import Lock
+
+import pandas as pd
+import requests
 
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import (
@@ -26,6 +28,14 @@ from exchange_utils import (
 from indicators import add_indicators, trend_lbl, detect_sr_levels
 
 logger = logging.getLogger(__name__)
+
+MAX_NEWS_LEN = 200
+
+
+def _truncate(text: str, limit: int = MAX_NEWS_LEN) -> str:
+    if not text:
+        return ""
+    return text[:limit]
 
 
 def session_meta() -> Dict[str, int | str]:
@@ -52,11 +62,34 @@ def session_meta() -> Dict[str, int | str]:
 
 
 def news_snapshot() -> Dict[str, str]:
-    """Return macro and crypto news snippets from environment variables."""
+    """Fetch macro, crypto and unlock news from remote API.
 
-    macro = os.getenv("NEWS_MACRO")
-    crypto = os.getenv("NEWS_CRYPTO")
-    unlock = os.getenv("NEWS_UNLOCK")
+    The function expects an API key in the ``NEWS_API_KEY`` environment variable
+    and performs a HTTP GET request to retrieve a JSON payload containing the
+    news fields. If the request fails for any reason an empty dictionary is
+    returned.
+    """
+
+    api_key = os.getenv("NEWS_API_KEY")
+    if not api_key:
+        logger.warning("NEWS_API_KEY not set")
+        return {}
+
+    try:
+        resp = requests.get(
+            "https://cryptopanic.com/api/v1/news",
+            params={"auth_token": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # pragma: no cover - network errors
+        logger.error("Failed fetching news: %s", exc)
+        return {}
+
+    macro = _truncate(data.get("macro"))
+    crypto = _truncate(data.get("crypto"))
+    unlock = _truncate(data.get("unlock"))
     return drop_empty({"macro": macro, "crypto": crypto, "unlock": unlock})
 
 
