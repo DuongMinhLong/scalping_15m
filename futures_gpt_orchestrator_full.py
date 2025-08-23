@@ -96,23 +96,8 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         capital = 0.0
 
     pos_pairs = get_open_position_pairs(ex)
-    if pos_pairs:
-        stamp = ts_prefix()
-        save_text(
-            f"{stamp}_orders.json",
-            dumps_min(
-                {
-                    "live": run_live,
-                    "capital": capital,
-                    "coins": [],
-                    "placed": [],
-                    "reason": "existing_positions",
-                }
-            ),
-        )
-        return {"ts": stamp, "capital": capital, "coins": [], "placed": []}
 
-    payload_full = build_payload(ex, limit, exclude_pairs=pos_pairs)
+    payload_full = build_payload(ex, limit)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     save_text(
@@ -120,7 +105,15 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         dumps_min({"positions": sorted(list(pos_pairs))}),
     )
 
-    if not payload_full["coins"]:
+    payload_kept = {
+        **payload_full,
+        "coins": [
+            c for c in payload_full.get("coins", []) if c.get("pair") not in pos_pairs
+        ],
+    }
+    save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
+
+    if not payload_kept["coins"]:
         save_text(
             f"{stamp}_orders.json",
             dumps_min(
@@ -135,14 +128,13 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         )
         return {"ts": stamp, "capital": capital, "coins": [], "placed": []}
 
-    payload_kept = payload_full
-    save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
-
     pr_mini = build_prompts_mini(payload_kept)
     rsp_mini = send_openai(pr_mini["system"], pr_mini["user"], mini_model)
     mini_text = extract_content(rsp_mini)
     save_text(f"{stamp}_mini_output.json", mini_text)
-    coins: List[Dict[str, Any]] = parse_mini_actions(mini_text)
+    coins: List[Dict[str, Any]] = [
+        c for c in parse_mini_actions(mini_text) if (c.get("pair") or "").upper() not in pos_pairs
+    ]
 
     coins = enrich_tp_qty(ex, coins, capital)
 
