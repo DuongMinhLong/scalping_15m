@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import threading
+import time
 from typing import Any, Dict, List
 
 from env_utils import (
@@ -40,6 +41,78 @@ def call_locked(func, *args, **kwargs):
     """Call ``func`` with ``exchange_lock`` held to ensure thread safety."""
     with exchange_lock:
         return func(*args, **kwargs)
+
+
+def await_entry_fill(
+    exchange,
+    ccxt_symbol: str,
+    side: str,
+    qty: float,
+    price: float,
+    timeout: float = 1800.0,
+    poll_interval: float = 1.0,
+):
+    """Place a limit order and wait until it is fully filled or times out.
+
+    All interactions with ``exchange`` are routed through :func:`call_locked`
+    to ensure the global ``exchange_lock`` is honoured.
+
+    Parameters
+    ----------
+    exchange: ccxt-like exchange instance
+        The exchange on which to place the order.
+    ccxt_symbol: str
+        Symbol in CCXT format (e.g., ``"BTC/USDT"``).
+    side: str
+        ``"buy"`` or ``"sell"``.
+    qty: float
+        Order quantity.
+    price: float
+        Limit price for the entry order.
+    timeout: float, optional
+        Maximum seconds to wait for the order to fill before cancelling
+        (default 30 minutes).
+    poll_interval: float, optional
+        Seconds between order status checks.
+
+    Returns
+    -------
+    dict | None
+        Final order information if filled, otherwise ``None``.
+    """
+
+    order = call_locked(
+        exchange.create_order,
+        ccxt_symbol,
+        "limit",
+        "buy" if side == "buy" else "sell",
+        qty,
+        price,
+        {"reduceOnly": False},
+    )
+
+    order_id = order.get("id") if isinstance(order, dict) else None
+    if not order_id:
+        return None
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            current = call_locked(exchange.fetch_order, order_id, ccxt_symbol)
+        except Exception:
+            current = None
+        if isinstance(current, dict):
+            status = (current.get("status") or "").lower()
+            filled = float(current.get("filled") or 0.0)
+            if status == "closed" or filled >= float(qty):
+                return current
+        time.sleep(poll_interval)
+
+    try:
+        call_locked(exchange.cancel_order, order_id, ccxt_symbol)
+    except Exception:
+        pass
+    return None
 
 
 def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
