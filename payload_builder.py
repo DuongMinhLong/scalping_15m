@@ -23,6 +23,7 @@ from exchange_utils import (
     liquidation_snapshot,
     open_interest_snapshot,
     orderbook_snapshot,
+    load_usdtm,
     top_by_qv,
     top_by_market_cap,
 )
@@ -267,16 +268,34 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
     symbols_raw = top_by_qv(exchange, limit * 3)
-    mc_bases = set(top_by_market_cap(30))
+    mc_list = top_by_market_cap(max(limit, 30))
+    mc_bases = set(mc_list)
     symbols: List[str] = []
+    used_bases: Set[str] = set()
     for s in symbols_raw:
         pair = norm_pair_symbol(s)
         base = pair[:-4]
         if pair in exclude_pairs or base not in mc_bases:
             continue
         symbols.append(s)
+        used_bases.add(base)
         if len(symbols) >= limit:
             break
+    if len(symbols) < limit:
+        markets = load_usdtm(exchange)
+        for base in mc_list:
+            if len(symbols) >= limit:
+                break
+            if base in used_bases:
+                continue
+            sym = f"{base}/USDT:USDT"
+            if sym not in markets:
+                continue
+            pair = norm_pair_symbol(sym)
+            if pair in exclude_pairs:
+                continue
+            symbols.append(sym)
+            used_bases.add(base)
     for pair in pos_pairs:
         sym = pair_to_symbol(pair)
         if sym and sym not in symbols:
