@@ -1,4 +1,5 @@
 import json
+import json
 import os
 import pathlib
 import sys
@@ -13,7 +14,7 @@ class DummyExchange:
         return {"total": {"USDT": 1000}}
 
 
-def test_run_excludes_positions_from_gpt(monkeypatch):
+def test_run_includes_positions_in_gpt_payload(monkeypatch):
     monkeypatch.setattr(orch, "load_env", lambda: None)
     monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
     monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
@@ -61,7 +62,7 @@ def test_run_excludes_positions_from_gpt(monkeypatch):
     assert build_called.get("called")
     payload_str = captured.get("user", "").split("DATA:")[-1]
     data = json.loads(payload_str)
-    assert all(c.get("pair") != "ETHUSDT" for c in data.get("coins", []))
+    assert any(c.get("pair") == "ETHUSDT" for c in data.get("coins", []))
     assert any(p.get("pair") == "ETHUSDT" for p in data.get("positions", []))
     assert res == {
         "ts": "ts",

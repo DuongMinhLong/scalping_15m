@@ -24,6 +24,7 @@ from exchange_utils import (
     open_interest_snapshot,
     orderbook_snapshot,
     top_by_qv,
+    top_by_market_cap,
 )
 from indicators import add_indicators, trend_lbl, detect_sr_levels
 from positions import positions_snapshot
@@ -124,6 +125,17 @@ def norm_pair_symbol(symbol: str) -> str:
     if not symbol:
         return ""
     return symbol.split(":")[0].replace("/", "").upper()
+
+
+def pair_to_symbol(pair: str) -> str:
+    """Convert ``BASEQUOTE`` pair into CCXT ``BASE/QUOTE:QUOTE`` symbol."""
+
+    if not pair:
+        return ""
+    if pair.endswith("USDT"):
+        base = pair[:-4]
+        return f"{base}/USDT:USDT"
+    return pair
 
 
 def build_1h(df: pd.DataFrame) -> Dict:
@@ -252,15 +264,23 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     """Build the full payload used by the orchestrator."""
 
     exclude_pairs = exclude_pairs or set()
+    positions = positions_snapshot(exchange)
+    pos_pairs = {p.get("pair") for p in positions}
     symbols_raw = top_by_qv(exchange, limit * 3)
+    mc_bases = set(top_by_market_cap(30))
     symbols: List[str] = []
     for s in symbols_raw:
-        pair = s.replace("/", "").upper()
-        if pair in exclude_pairs:
+        pair = norm_pair_symbol(s)
+        base = pair[:-4]
+        if pair in exclude_pairs or base not in mc_bases:
             continue
         symbols.append(s)
         if len(symbols) >= limit:
             break
+    for pair in pos_pairs:
+        sym = pair_to_symbol(pair)
+        if sym and sym not in symbols:
+            symbols.append(sym)
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
@@ -276,6 +296,6 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         "eth": eth_bias(exchange),
         "news": news_snapshot(),
         "coins": [drop_empty(c) for c in coins],
-        "positions": positions_snapshot(exchange),
+        "positions": positions,
     }
 
