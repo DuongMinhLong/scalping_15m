@@ -3,6 +3,11 @@
 from env_utils import dumps_min
 
 
+# Minutes remaining in the current session under which trades should be skipped.
+# Default set to 60 to reflect a 1-hour timeframe.
+MINS_TO_CLOSE_THRESHOLD = 60
+
+
 PROMPT_SYS_MINI = (
     'You are a precise trading decision assistant. Return ONLY minified JSON. '
     'No prose. No markdown. If none, return {"coins":[]}.'
@@ -13,7 +18,7 @@ PROMPT_USER_MINI = (
     'Dùng price action, cấu trúc HH/HL/LH/LL, breakout, divergence, momentum/vol_spike, sr_levels, key level, MTF. '
     'Output JSON: {"coins":[{"pair":"SYMBOL","entry":0.0,"sl":0.0,"tp2":0.0,"risk":0.0},...]}. '
     'Ưu tiên RR>=1.8; cho phép <1.8 khi PA+volume cực mạnh & đồng thuận đa khung. H4/D1 cùng hướng 1h; ETH cùng hướng thêm điểm; '
-    'cho phép ngược pha khi có đảo chiều rõ + vol_spike. Session: Asia siết/US nới/EU tb; mins_to_close<=15 & yếu → bỏ. '
+    f'cho phép ngược pha khi có đảo chiều rõ + vol_spike. Session: Asia siết/US nới/EU tb; mins_to_close<={MINS_TO_CLOSE_THRESHOLD} & yếu → bỏ. '
     'Orderbook: bỏ nếu spread>0.001 hoặc imbalance ngược. Bot dùng TP1=1R, TP2 nếu thiếu → 2R. '
     'Đảm bảo long entry>sl, short entry<sl. Không kèo → {"coins":[]}. DATA:{payload}'
 )
