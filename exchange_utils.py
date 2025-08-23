@@ -61,6 +61,23 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
         return symbols[:limit]
 
 
+def top_by_24h_change(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
+    """Return ``limit`` symbols sorted by absolute 24h percentage change."""
+
+    markets = load_usdtm(exchange)
+    symbols = list(markets.keys())
+    try:
+        tickers = exchange.fetch_tickers()
+        scored = []
+        for sym in symbols:
+            pct = (tickers.get(sym) or {}).get("percentage") or 0
+            scored.append((sym, abs(float(pct))))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [s for s, _ in scored[:limit]]
+    except Exception:
+        return symbols[:limit]
+
+
 def fetch_ohlcv_df(exchange: ccxt.Exchange, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
     """Fetch OHLCV data and return as a tidy :class:`~pandas.DataFrame`."""
 

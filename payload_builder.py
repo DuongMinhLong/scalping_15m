@@ -9,7 +9,12 @@ import pandas as pd
 from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
-from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
+from exchange_utils import (
+    fetch_ohlcv_df,
+    orderbook_snapshot,
+    top_by_qv,
+    top_by_24h_change,
+)
 from indicators import add_indicators, trend_lbl
 
 
@@ -169,6 +174,15 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         symbols.append(s)
         if len(symbols) >= limit:
             break
+    if len(symbols) < limit:
+        fallback_raw = top_by_24h_change(exchange, limit * 3)
+        for s in fallback_raw:
+            pair = s.replace("/", "").upper()
+            if pair in exclude_pairs or s in symbols:
+                continue
+            symbols.append(s)
+            if len(symbols) >= limit:
+                break
     coins = [coin_payload(exchange, s) for s in symbols]
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
