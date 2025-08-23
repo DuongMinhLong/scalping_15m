@@ -3,24 +3,19 @@
 from env_utils import dumps_min
 
 
-# Minutes remaining in the current session under which trades should be skipped.
-# Default set to 60 to reflect a 1-hour timeframe.
-MINS_TO_CLOSE_THRESHOLD = 60
-
-
 PROMPT_SYS_MINI = (
-    'You are a precise trading decision assistant. Return ONLY minified JSON. '
-    'No prose. No markdown. If none, return {"coins":[]}.'
+    "You are a professional crypto trader. "
+    "Analyze market data and output ONLY valid JSON. "
+    "No prose. No markdown. If no trade, return {\"coins\":[]}."
 )
+
 PROMPT_USER_MINI = (
-    'Phân tích 1h (20 ohlcv+chỉ báo+sr_levels), H4/D1 snapshot, ETH bias, session, funding/OI/CVD/liquidation, '
-    'news vĩ mô, crypto news/unlock, orderbook. '
-    'Dùng price action, cấu trúc HH/HL/LH/LL, breakout, divergence, momentum/vol_spike, sr_levels, key level, MTF. '
-    'Output JSON: {"coins":[{"pair":"SYMBOL","entry":0.0,"sl":0.0,"tp2":0.0,"risk":0.0},...]}. '
-    'Ưu tiên RR>=1.8; cho phép <1.8 khi PA+volume cực mạnh & đồng thuận đa khung. H4/D1 cùng hướng 1h; ETH cùng hướng thêm điểm; '
-    f'cho phép ngược pha khi có đảo chiều rõ + vol_spike. Session: Asia siết/US nới/EU tb; mins_to_close<={MINS_TO_CLOSE_THRESHOLD} & yếu → bỏ. '
-    'Orderbook: bỏ nếu spread>0.001 hoặc imbalance ngược. Bot dùng TP1=1R, TP2 nếu thiếu → 2R. '
-    'Đảm bảo long entry>sl, short entry<sl. Không kèo → {"coins":[]}. DATA:{payload}'
+    "Dữ liệu đầy đủ dưới đây (không bỏ sót bất kỳ trường nào). "
+    "Phân tích toàn bộ như 1 trader chuyên nghiệp, kết hợp price action, đa khung (1H/H4/D1), ETH bias, "
+    "orderbook, funding/OI/CVD/liquidation, news. "
+    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp2\":0.0,\"risk\":0.0}, ...]}. "
+    "Không có tín hiệu → {\"coins\":[]}. "
+    "DATA:{payload}"
 )
 
 
@@ -31,4 +26,3 @@ def build_prompts_mini(payload_kept):
         "system": PROMPT_SYS_MINI,
         "user": PROMPT_USER_MINI.replace("{payload}", dumps_min(payload_kept)),
     }
-
