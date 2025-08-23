@@ -102,3 +102,84 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
     except Exception:
         return {}
 
+
+def funding_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return the current funding rate and prediction for ``symbol``."""
+
+    try:
+        fr = exchange.fetch_funding_rate(symbol)
+        info = fr.get("info") or {}
+        rate = fr.get("fundingRate")
+        predicted = info.get("predictedFundingRate")
+        next_ts = fr.get("nextFundingTime") or info.get("nextFundingTime")
+        return {
+            "rate": rfloat(rate, 6),
+            "predicted_rate": rfloat(predicted, 6),
+            "next_ts": int(next_ts) if next_ts else None,
+        }
+    except Exception:
+        return {}
+
+
+def open_interest_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return the latest open interest for ``symbol``."""
+
+    try:
+        oi = exchange.fetch_open_interest(symbol)
+        amount = (
+            oi.get("openInterestAmount")
+            or oi.get("amount")
+            or oi.get("openInterest")
+        )
+        value = oi.get("openInterestValue") or oi.get("value")
+        out: Dict[str, float] = {}
+        if amount is not None:
+            out["amount"] = rfloat(amount, 6)
+        if value is not None:
+            out["value"] = rfloat(value, 6)
+        return out
+    except Exception:
+        return {}
+
+
+def cvd_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 500) -> Dict:
+    """Return a simple cumulative volume delta over recent trades."""
+
+    try:
+        trades = exchange.fetch_trades(symbol, limit=limit)
+        cvd = 0.0
+        for t in trades:
+            side = t.get("side")
+            amt = float(t.get("amount") or 0)
+            if side == "buy":
+                cvd += amt
+            elif side == "sell":
+                cvd -= amt
+        return {"cvd": rfloat(cvd, 6)}
+    except Exception:
+        return {}
+
+
+def liquidation_snapshot(
+    exchange: ccxt.Exchange, symbol: str, limit: int = 50
+) -> Dict:
+    """Return recent liquidation statistics for ``symbol``."""
+
+    try:
+        rows = exchange.fetch_liquidations(symbol, limit=limit)
+        long_amt = 0.0
+        short_amt = 0.0
+        for r in rows:
+            amt = float(r.get("amount") or 0)
+            side = r.get("side", "").lower()
+            if side == "long":
+                long_amt += amt
+            elif side == "short":
+                short_amt += amt
+        return {
+            "long_liq": rfloat(long_amt, 6),
+            "short_liq": rfloat(short_amt, 6),
+        }
+    except Exception:
+        return {}
+

@@ -9,11 +9,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
 import logging
+import os
 import pandas as pd
 from threading import Lock
 
 from env_utils import compact, drop_empty, now_ms, rfloat
-from exchange_utils import fetch_ohlcv_df, orderbook_snapshot, top_by_qv
+from exchange_utils import (
+    cvd_snapshot,
+    fetch_ohlcv_df,
+    funding_snapshot,
+    liquidation_snapshot,
+    open_interest_snapshot,
+    orderbook_snapshot,
+    top_by_qv,
+)
 from indicators import add_indicators, trend_lbl, detect_sr_levels
 
 logger = logging.getLogger(__name__)
@@ -40,6 +49,15 @@ def session_meta() -> Dict[str, int | str]:
         "utc_hour": hour,
         "mins_to_close": max(0, int((end - now).total_seconds() // 60)),
     }
+
+
+def news_snapshot() -> Dict[str, str]:
+    """Return macro and crypto news snippets from environment variables."""
+
+    macro = os.getenv("NEWS_MACRO")
+    crypto = os.getenv("NEWS_CRYPTO")
+    unlock = os.getenv("NEWS_UNLOCK")
+    return drop_empty({"macro": macro, "crypto": crypto, "unlock": unlock})
 
 
 CACHE_H1: Dict[str, pd.DataFrame] = {}
@@ -157,6 +175,10 @@ def coin_payload(exchange, symbol: str) -> Dict:
         "h1": build_1h(h1),
         "h4": build_snap(h4),
         "d1": build_snap(d1),
+        "funding": funding_snapshot(exchange, symbol),
+        "oi": open_interest_snapshot(exchange, symbol),
+        "cvd": cvd_snapshot(exchange, symbol),
+        "liquidation": liquidation_snapshot(exchange, symbol),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
@@ -203,6 +225,7 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
         "eth": eth_bias(exchange),
+        "news": news_snapshot(),
         "coins": [drop_empty(c) for c in coins],
     }
 
