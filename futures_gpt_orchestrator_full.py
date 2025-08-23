@@ -1,10 +1,9 @@
-"""Futures → GPT Orchestrator (15m scalping, H1/H4, ETH bias).
+"""Futures → GPT Orchestrator (1h base, H4/D1, ETH bias).
 
-This script orchestrates the full flow:
+This script orchestrates the flow:
 1. Build payloads from market data
-2. Prefilter with the NANO model
-3. Generate trading decisions with the MINI model
-4. Optionally place orders on Binance futures
+2. Generate trading decisions with the MINI model
+3. Optionally place orders on Binance futures
 
 The original monolithic implementation has been refactored into smaller
 modules for clarity and maintainability.
@@ -30,10 +29,10 @@ from env_utils import (
     ts_prefix,
 )
 from exchange_utils import make_exchange
-from openai_client import extract_content, send_openai, try_extract_json
+from openai_client import extract_content, send_openai
 from payload_builder import build_payload
 from positions import _norm_pair_from_symbol, get_open_position_pairs
-from prompts import build_prompts_mini, build_prompts_nano
+from prompts import build_prompts_mini
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
 logger = logging.getLogger(__name__)
@@ -84,7 +83,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
 
     load_env()
-    nano_model, mini_model = get_models()
+    _, mini_model = get_models()
     ex = ex or make_exchange()
 
     if run_live:
@@ -120,30 +119,7 @@ def run(run_live: bool = False, limit: int = 20, ex=None) -> Dict[str, Any]:
         )
         return {"ts": stamp, "capital": capital, "coins": [], "placed": []}
 
-    pr_nano = build_prompts_nano(payload_full)
-    rsp_nano = send_openai(pr_nano["system"], pr_nano["user"], nano_model)
-    nano_text = extract_content(rsp_nano)
-    save_text(f"{stamp}_nano_output.json", nano_text)
-    keep: List[str] = []
-    try:
-        j = try_extract_json(nano_text) or {}
-        keep = [s.replace("/", "").upper() for s in (j.get("keep") or []) if isinstance(s, str)]
-    except Exception:
-        keep = []
-
-    kept: List[Dict[str, Any]] = [c for c in payload_full["coins"] if c["pair"] in keep]
-    if not kept:
-        result = {
-            "live": run_live,
-            "capital": capital,
-            "coins": [],
-            "placed": [],
-            "reason": "nano_no_data",
-        }
-        save_text(f"{stamp}_orders.json", dumps_min(result))
-        return {"ts": stamp, **result}
-
-    payload_kept = {"time": payload_full["time"], "eth": payload_full["eth"], "coins": kept}
+    payload_kept = payload_full
     save_text(f"{stamp}_payload_kept.json", dumps_min(payload_kept))
 
     pr_mini = build_prompts_mini(payload_kept)
@@ -357,18 +333,18 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
 def live_loop(limit: int = 20):
-    """Run the orchestrator every 15 minutes and adjust SL every 5 minutes."""
+    """Run the orchestrator every hour and adjust SL every 15 minutes."""
 
     ex = make_exchange()
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
         run(run_live=True, limit=limit, ex=ex)
-        scheduler.enter(900, 1, run_job)
+        scheduler.enter(3600, 1, run_job)
 
     def sl_job():
         move_sl_to_entry_if_tp1_hit(ex)
-        scheduler.enter(300, 1, sl_job)
+        scheduler.enter(900, 1, sl_job)
 
     scheduler.enter(0, 1, run_job)
     scheduler.enter(0, 1, sl_job)

@@ -65,7 +65,7 @@ def run_backtest(symbol: str, timeframe: str, limit: int, since: int | None) -> 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a simple backtest")
     parser.add_argument("--symbol", default="BTC/USDT", help="CCXT symbol, e.g. BTC/USDT")
-    parser.add_argument("--timeframe", default="15m", help="Candle timeframe")
+    parser.add_argument("--timeframe", default="1h", help="Candle timeframe")
     parser.add_argument("--limit", type=int, default=500, help="Number of candles to fetch")
     parser.add_argument(
         "--since", type=int, default=None, help="Optional start timestamp in milliseconds"

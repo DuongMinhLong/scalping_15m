@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🚀 Starting full deployment for scalping 15m bot..."
+echo "🚀 Starting full deployment for scalping 1h bot..."
 
 # Ensure python3 and pip are available
 if ! command -v python3 >/dev/null; then
