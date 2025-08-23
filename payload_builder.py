@@ -42,13 +42,13 @@ def session_meta() -> Dict[str, int | str]:
     }
 
 
-CACHE_15M: Dict[str, pd.DataFrame] = {}
 CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
+CACHE_D1: Dict[str, pd.DataFrame] = {}
 
-LOCK_15M = Lock()  # khoá bảo vệ cache 15m
 LOCK_H1 = Lock()   # khoá bảo vệ cache H1
 LOCK_H4 = Lock()   # khoá bảo vệ cache H4
+LOCK_D1 = Lock()   # khoá bảo vệ cache D1
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -59,8 +59,8 @@ def norm_pair_symbol(symbol: str) -> str:
     return symbol.split(":")[0].replace("/", "").upper()
 
 
-def build_15m(df: pd.DataFrame) -> Dict:
-    """Build the detailed 15m payload with indicators and OHLCV."""
+def build_1h(df: pd.DataFrame) -> Dict:
+    """Build the detailed 1h payload with indicators and OHLCV."""
 
     data = add_indicators(df)
     tail20 = data.tail(20)
@@ -121,16 +121,6 @@ def build_snap(df: pd.DataFrame) -> Dict:
 def coin_payload(exchange, symbol: str) -> Dict:
     """Xây dựng payload cho từng symbol với cache an toàn thread."""
 
-    with LOCK_15M:
-        if symbol not in CACHE_15M:
-            CACHE_15M[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
-        else:
-            last_ts = int(CACHE_15M[symbol].index[-1].timestamp() * 1000)
-            new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
-            if not new.empty:
-                df = pd.concat([CACHE_15M[symbol], new]).sort_index()
-                CACHE_15M[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-        c15 = CACHE_15M[symbol]
     with LOCK_H1:
         if symbol not in CACHE_H1:
             CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
@@ -151,29 +141,39 @@ def coin_payload(exchange, symbol: str) -> Dict:
                 df = pd.concat([CACHE_H4[symbol], new]).sort_index()
                 CACHE_H4[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         h4 = CACHE_H4[symbol]
+    with LOCK_D1:
+        if symbol not in CACHE_D1:
+            CACHE_D1[symbol] = fetch_ohlcv_df(exchange, symbol, "1d", 300)
+        else:
+            last_ts = int(CACHE_D1[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, "1d", 300, since=last_ts)
+            if not new.empty:
+                df = pd.concat([CACHE_D1[symbol], new]).sort_index()
+                CACHE_D1[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
+        d1 = CACHE_D1[symbol]
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "c15": build_15m(c15),
-        "h1": build_snap(h1),
+        "h1": build_1h(h1),
         "h4": build_snap(h4),
+        "d1": build_snap(d1),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
 
 
 def eth_bias(exchange) -> Dict:
-    """Trả về snapshot H1/H4 của ETH với cache an toàn."""
+    """Trả về snapshot H4/D1 của ETH với cache an toàn."""
 
     symbol = "ETH/USDT"
-    with LOCK_H1:
-        if symbol not in CACHE_H1:
-            CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
-        h1 = CACHE_H1[symbol]
     with LOCK_H4:
         if symbol not in CACHE_H4:
             CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
         h4 = CACHE_H4[symbol]
-    return {"h1": build_snap(h1), "h4": build_snap(h4)}
+    with LOCK_D1:
+        if symbol not in CACHE_D1:
+            CACHE_D1[symbol] = fetch_ohlcv_df(exchange, symbol, "1d", 300)
+        d1 = CACHE_D1[symbol]
+    return {"h4": build_snap(h4), "d1": build_snap(d1)}
 
 
 def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = None) -> Dict:
