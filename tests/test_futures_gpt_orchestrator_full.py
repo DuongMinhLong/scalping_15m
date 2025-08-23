@@ -23,8 +23,6 @@ def test_run_excludes_positions_from_gpt(monkeypatch):
 
     fake_save_text.saved = {}
     monkeypatch.setattr(orch, "save_text", fake_save_text)
-    monkeypatch.setattr(orch, "get_open_position_pairs", lambda ex: {"ETHUSDT"})
-
     build_called = {}
 
     def fake_build_payload(ex, limit):
@@ -34,6 +32,9 @@ def test_run_excludes_positions_from_gpt(monkeypatch):
             "eth": {},
             "news": {},
             "coins": [{"pair": "ETHUSDT"}, {"pair": "BTCUSDT"}],
+            "positions": [
+                {"pair": "ETHUSDT", "entry": 1, "sl": 0.9, "tp1": 1.1, "tp2": 1.2}
+            ],
         }
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
@@ -48,21 +49,34 @@ def test_run_excludes_positions_from_gpt(monkeypatch):
     monkeypatch.setattr(
         orch, "extract_content", lambda r: r["choices"][0]["message"]["content"]
     )
-    monkeypatch.setattr(orch, "parse_mini_actions", lambda text: [])
+    monkeypatch.setattr(
+        orch,
+        "parse_mini_actions",
+        lambda text: {"coins": [], "close_all": [], "close_partial": []},
+    )
     monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
 
     res = orch.run(run_live=False, ex=DummyExchange())
 
     assert build_called.get("called")
-    assert "ETHUSDT" not in captured.get("user", "")
+    payload_str = captured.get("user", "").split("DATA:")[-1]
+    data = json.loads(payload_str)
+    assert all(c.get("pair") != "ETHUSDT" for c in data.get("coins", []))
+    assert any(p.get("pair") == "ETHUSDT" for p in data.get("positions", []))
     assert res == {
         "ts": "ts",
         "live": False,
         "capital": 1000.0,
         "coins": [],
+        "close_all": [],
+        "close_partial": [],
         "placed": [],
+        "closed": [],
     }
     assert "ts_orders.json" in fake_save_text.saved
     data = json.loads(fake_save_text.saved["ts_orders.json"])
     assert "reason" not in data
     assert data["coins"] == []
+    assert data["close_all"] == []
+    assert data["close_partial"] == []
+    assert data["closed"] == []

@@ -17,3 +17,16 @@ def test_to_ccxt_symbol_known_quotes():
 def test_to_ccxt_symbol_with_exchange_markets():
     dummy = types.SimpleNamespace(markets={"FOO/USDC": {"symbol": "FOO/USDC"}})
     assert trading_utils.to_ccxt_symbol("FOOUSDC", dummy) == "FOO/USDC"
+
+
+def test_parse_mini_actions_handles_close():
+    text = (
+        "{"
+        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp2":1.1}],'
+        '"close_all":[{"pair":"ETHUSDT"}],'
+        '"close_partial":[{"pair":"LTCUSDT","pct":25}]}'
+    )
+    res = trading_utils.parse_mini_actions(text)
+    assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
+    assert res["close_all"] == [{"pair": "ETHUSDT"}]
+    assert res["close_partial"] == [{"pair": "LTCUSDT", "pct": 25.0}]
