@@ -91,8 +91,12 @@ def save_text(path: str, text: str) -> None:
     Path(path).write_text(text, encoding="utf-8")
 
 
-def rfloat(value: Any, nd: int = 8) -> float | None:
+def rfloat(value: Any, nd: int = 6) -> float | None:
     """Return ``value`` rounded to ``nd`` significant digits.
+
+    The default precision was lowered from 8 to 6 digits to keep price
+    values compact in generated payloads while remaining sufficiently
+    accurate for analysis.
 
     ``None`` or non-finite numbers yield ``None``.
     """
@@ -107,10 +111,32 @@ def rfloat(value: Any, nd: int = 8) -> float | None:
         return None
 
 
-def compact(arr: List[Any], nd: int = 8) -> List[float | None]:
+def compact(arr: List[Any], nd: int = 6) -> List[float | None]:
     """Apply :func:`rfloat` to every element in ``arr``."""
 
     return [rfloat(v, nd) for v in arr]
+
+
+def human_num(value: Any, nd: int = 3) -> float | str | None:
+    """Return ``value`` formatted with K/M/B/T suffixes to save tokens.
+
+    Values below ``1e3`` are returned as floats. Larger magnitudes are
+    represented as compact strings such as ``312M``.
+    """
+
+    try:
+        n = float(value)
+    except Exception:
+        return None
+
+    for factor, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if abs(n) >= factor:
+            val = rfloat(n / factor, nd)
+            if val is None:
+                return None
+            return f"{val:g}{suffix}"
+
+    return rfloat(n, nd)
 
 
 def drop_empty(obj: Any) -> Any:

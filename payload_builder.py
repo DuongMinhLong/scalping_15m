@@ -16,7 +16,7 @@ from threading import Lock
 import pandas as pd
 import requests
 
-from env_utils import compact, drop_empty, now_ms, rfloat
+from env_utils import compact, drop_empty, human_num, now_ms, rfloat
 from exchange_utils import (
     cvd_snapshot,
     fetch_ohlcv_df,
@@ -150,7 +150,7 @@ def build_1h(df: pd.DataFrame) -> Dict:
     data = add_indicators(df)
     tail20 = data.tail(20)
     ohlcv20 = [
-        compact([r.open, r.high, r.low, r.close, r.volume])
+        compact([r.open, r.high, r.low, r.close]) + [human_num(r.volume)]
         for _, r in tail20.iterrows()
     ]
     swing_high = rfloat(data["high"].tail(20).max())
