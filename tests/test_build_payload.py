@@ -17,8 +17,33 @@ def test_build_payload_fills_from_market_cap(monkeypatch):
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"pair": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "top_by_qv", lambda ex, lim: ["AAA/USDT:USDT"])
     monkeypatch.setattr(pb, "top_by_market_cap", lambda lim: ["AAA", "BBB"])
-    monkeypatch.setattr(pb, "load_usdtm", lambda ex: {"AAA/USDT:USDT": {}, "BBB/USDT:USDT": {}})
+    monkeypatch.setattr(
+        pb,
+        "load_usdtm",
+        lambda ex: {
+            "AAA/USDT:USDT": {"base": "AAA"},
+            "BBB/USDT:USDT": {"base": "BBB"},
+        },
+    )
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["pair"] for c in payload["coins"]}
     assert pairs == {"AAAUSDT", "BBBUSDT"}
+
+
+def test_build_payload_handles_numeric_prefix(monkeypatch):
+    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "eth_bias", lambda ex: {})
+    monkeypatch.setattr(pb, "news_snapshot", lambda: {})
+    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"pair": pb.norm_pair_symbol(sym)})
+    monkeypatch.setattr(pb, "top_by_qv", lambda ex, lim: [])
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda lim: ["PEPE"])
+    monkeypatch.setattr(
+        pb,
+        "load_usdtm",
+        lambda ex: {"1000PEPE/USDT:USDT": {"base": "1000PEPE"}},
+    )
+
+    payload = pb.build_payload(DummyExchange(), limit=1)
+    pairs = {c["pair"] for c in payload["coins"]}
+    assert pairs == {"1000PEPEUSDT"}
