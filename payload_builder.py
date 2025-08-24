@@ -150,13 +150,7 @@ def build_1h(df: pd.DataFrame) -> Dict:
     data = add_indicators(df)
     tail20 = data.tail(20)
     ohlcv20 = [
-        [
-            rfloat(r.open),
-            rfloat(r.high),
-            rfloat(r.low),
-            rfloat(r.close),
-            rfloat(r.volume),
-        ]
+        compact([r.open, r.high, r.low, r.close, r.volume])
         for _, r in tail20.iterrows()
     ]
     swing_high = rfloat(data["high"].tail(20).max())
