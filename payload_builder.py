@@ -10,6 +10,7 @@ from functools import partial
 
 import logging
 import os
+import re
 from threading import Lock
 
 import pandas as pd
@@ -137,6 +138,10 @@ def pair_to_symbol(pair: str) -> str:
         base = pair[:-4]
         return f"{base}/USDT:USDT"
     return pair
+
+
+def strip_numeric_prefix(base: str) -> str:
+    return re.sub(r"^\d+", "", base)
 
 
 def build_1h(df: pd.DataFrame) -> Dict:
@@ -275,20 +280,25 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     for s in symbols_raw:
         pair = norm_pair_symbol(s)
         base = pair[:-4]
-        if pair in exclude_pairs or base not in mc_bases:
+        norm_base = strip_numeric_prefix(base)
+        if pair in exclude_pairs or norm_base not in mc_bases:
             continue
         symbols.append(s)
-        used_bases.add(base)
+        used_bases.add(norm_base)
         if len(symbols) >= limit:
             break
     if len(symbols) < limit:
         markets = load_usdtm(exchange)
+        base_map: Dict[str, str] = {}
+        for sym, m in markets.items():
+            b = m.get("base") or ""
+            base_map[strip_numeric_prefix(b)] = sym
         for base in mc_list:
             if len(symbols) >= limit:
                 break
             if base in used_bases:
                 continue
-            sym = f"{base}/USDT:USDT"
+            sym = base_map.get(base, f"{base}/USDT:USDT")
             if sym not in markets:
                 continue
             pair = norm_pair_symbol(sym)
