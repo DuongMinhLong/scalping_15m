@@ -17,6 +17,34 @@ class DummyResponse:
         pass
 
 
+def test_load_usdtm_filters_stablecoins():
+    class DummyExchange:
+        def load_markets(self):
+            return {
+                "ETH/USDT:USDT": {
+                    "symbol": "ETH/USDT:USDT",
+                    "linear": True,
+                    "swap": True,
+                    "quote": "USDT",
+                    "active": True,
+                    "base": "ETH",
+                },
+                "BUSD/USDT:USDT": {
+                    "symbol": "BUSD/USDT:USDT",
+                    "linear": True,
+                    "swap": True,
+                    "quote": "USDT",
+                    "active": True,
+                    "base": "BUSD",
+                },
+            }
+
+    exchange = DummyExchange()
+    markets = exchange_utils.load_usdtm(exchange)
+    assert "ETH/USDT:USDT" in markets
+    assert "BUSD/USDT:USDT" not in markets
+
+
 def test_top_by_market_cap(monkeypatch):
     def fake_get(url, params=None, timeout=None):
         assert params["per_page"] == 2

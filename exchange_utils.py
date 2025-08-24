@@ -11,8 +11,21 @@ import requests
 
 from env_utils import rfloat
 
+# Stablecoins that should not be traded
+STABLE_BASES = {
+    "USDT",
+    "USDC",
+    "BUSD",
+    "TUSD",
+    "FDUSD",
+    "USDP",
+    "SUSD",
+    "USTC",
+    "DAI",
+}
+
 # Symbols to skip when building the market universe
-BLACKLIST_BASES = {"BTC", "BNB"}
+BLACKLIST_BASES = {"BTC", "BNB"} | STABLE_BASES
 
 
 def make_exchange() -> ccxt.Exchange:
@@ -28,7 +41,7 @@ def make_exchange() -> ccxt.Exchange:
 
 
 def load_usdtm(exchange: ccxt.Exchange) -> Dict[str, Dict]:
-    """Return all active USDT-margined futures markets except blacklisted bases."""
+    """Return all active USDT-margined futures markets excluding stablecoins and other blacklisted bases."""
 
     markets = exchange.load_markets()
     out: Dict[str, Dict] = {}
