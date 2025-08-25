@@ -357,11 +357,18 @@ def move_sl_to_entry_if_tp1_hit(exchange):
             continue
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
-def live_loop(limit: int = 20, run_interval: int = 3600, sl_interval: int = 3600):
-    """Run orchestrator and stop-loss checks on a schedule.
+def live_loop(
+    limit: int = 20,
+    run_interval: int = 900,
+    sl_interval: int = 300,
+    cancel_interval: int = 600,
+):
+    """Run orchestrator and maintenance checks on a schedule.
 
-    Both jobs default to running once per hour. The ``run_interval`` and
-    ``sl_interval`` arguments (seconds) allow customizing these cadences.
+    The orchestrator job defaults to running every fifteen minutes, the
+    stop-loss check runs every five minutes, and stale limit orders are
+    cancelled every ten minutes. The ``run_interval``, ``sl_interval`` and
+    ``cancel_interval`` arguments (seconds) allow customizing these cadences.
     """
 
     ex = make_exchange()
@@ -375,8 +382,13 @@ def live_loop(limit: int = 20, run_interval: int = 3600, sl_interval: int = 3600
         move_sl_to_entry_if_tp1_hit(ex)
         scheduler.enter(sl_interval, 1, sl_job)
 
+    def cancel_job():
+        cancel_unpositioned_limits(ex)
+        scheduler.enter(cancel_interval, 1, cancel_job)
+
     scheduler.enter(0, 1, run_job)
     scheduler.enter(0, 1, sl_job)
+    scheduler.enter(0, 1, cancel_job)
     scheduler.run()
 
 
