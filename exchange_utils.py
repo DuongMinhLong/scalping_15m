@@ -5,12 +5,16 @@ from __future__ import annotations
 import os
 import time
 from typing import Dict, List
+import logging
 
 import ccxt
 import pandas as pd
 import requests
 
 from env_utils import rfloat
+
+
+logger = logging.getLogger(__name__)
 
 # Stablecoins that should not be traded
 STABLE_BASES = {
@@ -76,7 +80,8 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
             scored.append((sym, float(qv)))
         scored.sort(key=lambda x: x[1], reverse=True)
         return [s for s, _ in scored[:limit]]
-    except Exception:
+    except Exception as e:
+        logger.warning("top_by_qv error: %s", e)
         return symbols[:limit]
 
 
@@ -110,7 +115,8 @@ def top_by_market_cap(limit: int = 30, *, ttl: float = 3600) -> List[str]:
         _MCAP_CACHE["timestamp"] = now
         _MCAP_CACHE["data"] = symbols
         return symbols
-    except Exception:
+    except Exception as e:
+        logger.warning("top_by_market_cap error: %s", e)
         return cached[:limit] if cached else []
 
 
@@ -152,7 +158,8 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
             "a": rfloat(ask_vol, 6),
             "im": rfloat(imb, 6),
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("orderbook_snapshot error for %s: %s", symbol, e)
         return {}
 
 
@@ -170,7 +177,8 @@ def funding_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
             "predicted_rate": rfloat(predicted, 6),
             "next_ts": int(next_ts) if next_ts else None,
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("funding_snapshot error for %s: %s", symbol, e)
         return {}
 
 
@@ -191,7 +199,8 @@ def open_interest_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
         if value is not None:
             out["value"] = rfloat(value, 6)
         return out
-    except Exception:
+    except Exception as e:
+        logger.warning("open_interest_snapshot error for %s: %s", symbol, e)
         return {}
 
 
@@ -209,7 +218,8 @@ def cvd_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 500) -> Dict
             elif side == "sell":
                 cvd -= amt
         return {"cvd": rfloat(cvd, 6)}
-    except Exception:
+    except Exception as e:
+        logger.warning("cvd_snapshot error for %s: %s", symbol, e)
         return {}
 
 
@@ -233,6 +243,7 @@ def liquidation_snapshot(
             "long_liq": rfloat(long_amt, 6),
             "short_liq": rfloat(short_amt, 6),
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("liquidation_snapshot error for %s: %s", symbol, e)
         return {}
 
