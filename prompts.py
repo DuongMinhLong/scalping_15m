@@ -13,7 +13,7 @@ PROMPT_USER_MINI = (
     "Dữ liệu 15m dưới đây cho các coin. "
     "Phân tích toàn bộ như một trader chuyên nghiệp, kết hợp price action, đa khung (1H/H4/D1), ETH bias. "
     "Chỉ vào lệnh khi độ tự tin > 7 và tỉ lệ RR tốt. "
-    "Trả về JSON duy nhất dạng {\\\"coins\\\":[{\\\"pair\\\":\\\"SYMBOL\\\",\\\"entry\\\":0.0,\\\"sl\\\":0.0,\\\"tp2\\\":0.0}]}. "
+    "Trả về JSON duy nhất với 3 mức chốt lời tp1,tp2,tp3 dạng {\\\"coins\\\":[{\\\"pair\\\":\\\"SYMBOL\\\",\\\"entry\\\":0.0,\\\"sl\\\":0.0,\\\"tp1\\\":0.0,\\\"tp2\\\":0.0,\\\"tp3\\\":0.0}]}. "
     "Không có tín hiệu → {\\\"coins\\\":[]}. "
     "Chỉ chọn LIMIT entry tối ưu (best limit entry). "
     "DATA:{payload}"
