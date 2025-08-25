@@ -146,6 +146,19 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
     monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
     monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
+    monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym: {"spread": 0.1})
 
     res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
-    assert "h1" in res and "h4" in res
+    assert "h1" in res and "h4" in res and res["ob"]["spread"] == 0.1
+
+
+def test_time_payload_sessions():
+    from datetime import datetime, timezone
+
+    now = datetime(2024, 1, 1, 2, 0, tzinfo=timezone.utc)
+    asia = payload_builder.time_payload(now)
+    assert asia["session"] == "asia" and asia["utc_hour"] == 2
+
+    now = datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc)
+    us = payload_builder.time_payload(now)
+    assert us["session"] == "us" and us["mins_to_close"] == 360

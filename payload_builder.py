@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from threading import Lock
 from typing import Dict, List, Set
@@ -12,7 +13,13 @@ from typing import Dict, List, Set
 import pandas as pd
 
 from env_utils import compact, drop_empty, human_num, rfloat
-from exchange_utils import fetch_ohlcv_df, load_usdtm, top_by_qv, top_by_market_cap
+from exchange_utils import (
+    fetch_ohlcv_df,
+    load_usdtm,
+    orderbook_snapshot,
+    top_by_qv,
+    top_by_market_cap,
+)
 from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
 
@@ -41,6 +48,31 @@ def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict
                 cache[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         df_tf = cache[symbol]
     return build_snap(df_tf)
+
+
+def time_payload(now: datetime | None = None) -> Dict:
+    """Return current UTC time info and trading session details."""
+
+    now = now or datetime.now(timezone.utc)
+    utc_hour = now.hour
+    if 0 <= utc_hour < 8:
+        session = "asia"
+        end = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    elif 8 <= utc_hour < 16:
+        session = "europe"
+        end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    else:
+        session = "us"
+        end = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    mins_to_close = int((end - now).total_seconds() / 60)
+    return {
+        "now_utc": now.isoformat().replace("+00:00", "Z"),
+        "utc_hour": utc_hour,
+        "session": session,
+        "mins_to_close": mins_to_close,
+    }
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -141,6 +173,7 @@ def coin_payload(exchange, symbol: str) -> Dict:
         "m15": build_15m(m15),
         "h1": _snap_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
         "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
+        "ob": orderbook_snapshot(exchange, symbol),
     }
     return drop_empty(payload)
 
@@ -151,7 +184,7 @@ def build_payload(
     exclude_pairs: Set[str] | None = None,
     mc_ttl: float = 3600,
 ) -> Dict:
-    """Build the payload used by the orchestrator (15m only)."""
+    """Build the payload used by the orchestrator with time and bias info."""
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
@@ -200,4 +233,15 @@ def build_payload(
                 coins.append(fut.result())
             except Exception as e:
                 logger.warning("coin_payload failed for %s: %s", sym, e)
-    return {"coins": [drop_empty(c) for c in coins]}
+    eth_symbol = pair_to_symbol("ETHUSDT")
+    eth = {
+        "h1": _snap_with_cache(exchange, eth_symbol, "1h", CACHE_H1, LOCK_H1),
+        "h4": _snap_with_cache(exchange, eth_symbol, "4h", CACHE_H4, LOCK_H4),
+    }
+    return drop_empty(
+        {
+            "time": time_payload(),
+            "eth": drop_empty(eth),
+            "coins": [drop_empty(c) for c in coins],
+        }
+    )
