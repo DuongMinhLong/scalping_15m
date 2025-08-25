@@ -103,14 +103,19 @@ def coin_payload(exchange, symbol: str) -> Dict:
     return drop_empty(payload)
 
 
-def build_payload(exchange, limit: int = 10, exclude_pairs: Set[str] | None = None) -> Dict:
+def build_payload(
+    exchange,
+    limit: int = 10,
+    exclude_pairs: Set[str] | None = None,
+    mc_ttl: float = 3600,
+) -> Dict:
     """Build the payload used by the orchestrator (15m only)."""
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
     symbols_raw = top_by_qv(exchange, limit * 2)
-    mc_list = top_by_market_cap(max(limit, 30))
+    mc_list = top_by_market_cap(max(limit, 30), ttl=mc_ttl)
     mc_bases = set(mc_list)
     symbols: List[str] = []
     used_bases: Set[str] = set()

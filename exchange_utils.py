@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Dict, List
 
 import ccxt
@@ -26,6 +27,10 @@ STABLE_BASES = {
 
 # Symbols to skip when building the market universe
 BLACKLIST_BASES = {"BTC", "BNB"} | STABLE_BASES
+
+
+# Cache for CoinGecko market cap results
+_MCAP_CACHE: Dict[str, object] = {"timestamp": 0.0, "data": []}
 
 
 def make_exchange() -> ccxt.Exchange:
@@ -75,8 +80,17 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
         return symbols[:limit]
 
 
-def top_by_market_cap(limit: int = 30) -> List[str]:
-    """Return top coin symbols sorted by market cap using the CoinGecko API."""
+def top_by_market_cap(limit: int = 30, *, ttl: float = 3600) -> List[str]:
+    """Return top coin symbols sorted by market cap using the CoinGecko API.
+
+    Results are cached in-memory for ``ttl`` seconds to avoid hitting the
+    CoinGecko API on every call.
+    """
+
+    now = time.time()
+    cached = _MCAP_CACHE["data"]
+    if cached and now - _MCAP_CACHE["timestamp"] < ttl and len(cached) >= limit:
+        return cached[:limit]
 
     try:
         resp = requests.get(
@@ -92,9 +106,12 @@ def top_by_market_cap(limit: int = 30) -> List[str]:
         )
         resp.raise_for_status()
         data = resp.json() or []
-        return [str(item.get("symbol", "")).upper() for item in data]
+        symbols = [str(item.get("symbol", "")).upper() for item in data]
+        _MCAP_CACHE["timestamp"] = now
+        _MCAP_CACHE["data"] = symbols
+        return symbols
     except Exception:
-        return []
+        return cached[:limit] if cached else []
 
 
 def fetch_ohlcv_df(

@@ -46,10 +46,18 @@ def test_load_usdtm_filters_stablecoins():
 
 
 def test_top_by_market_cap(monkeypatch):
+    calls = []
+
     def fake_get(url, params=None, timeout=None):
+        calls.append(1)
         assert params["per_page"] == 2
         return DummyResponse([{"symbol": "btc"}, {"symbol": "eth"}])
 
     monkeypatch.setattr(requests, "get", fake_get)
-    res = exchange_utils.top_by_market_cap(2)
-    assert res == ["BTC", "ETH"]
+    exchange_utils._MCAP_CACHE["timestamp"] = 0
+    exchange_utils._MCAP_CACHE["data"] = []
+    res1 = exchange_utils.top_by_market_cap(2)
+    res2 = exchange_utils.top_by_market_cap(2)
+    assert res1 == ["BTC", "ETH"]
+    assert res2 == ["BTC", "ETH"]
+    assert len(calls) == 1

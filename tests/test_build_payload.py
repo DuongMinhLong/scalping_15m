@@ -14,7 +14,7 @@ def test_build_payload_fills_from_market_cap(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"pair": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "top_by_qv", lambda ex, lim: ["AAA/USDT:USDT"])
-    monkeypatch.setattr(pb, "top_by_market_cap", lambda lim: ["AAA", "BBB"])
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda lim, ttl=3600: ["AAA", "BBB"])
     monkeypatch.setattr(
         pb,
         "load_usdtm",
@@ -33,7 +33,7 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"pair": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "top_by_qv", lambda ex, lim: [])
-    monkeypatch.setattr(pb, "top_by_market_cap", lambda lim: ["PEPE"])
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda lim, ttl=3600: ["PEPE"])
     monkeypatch.setattr(
         pb,
         "load_usdtm",
