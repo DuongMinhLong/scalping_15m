@@ -13,10 +13,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sched
 import time
 from threading import Thread
 from typing import Any, Dict, List
+
+try:  # pragma: no cover - optional dependency
+    from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore
+except Exception:  # pragma: no cover - APScheduler missing
+    BlockingScheduler = None
 
 from env_utils import (
     dumps_min,
@@ -380,38 +384,43 @@ def live_loop(
 
     The orchestrator job defaults to running every fifteen minutes, the
     stop-loss check runs every five minutes, and stale limit orders are
-    cancelled every ten minutes. The ``run_interval``, ``sl_interval`` and
-    ``cancel_interval`` arguments (seconds) allow customizing these cadences.
+    cancelled every ten minutes. These cadences align with wall-clock time
+    via cron-based scheduling. The ``*_interval`` arguments are in seconds
+    and should be multiples of 60.
     """
 
+    if BlockingScheduler is None:
+        raise RuntimeError("APScheduler is required for live_loop scheduling")
+
     ex = make_exchange()
-    scheduler = sched.scheduler(time.time, time.sleep)
+    scheduler = BlockingScheduler()
 
     def run_job():
         try:
             run(run_live=True, limit=limit, ex=ex)
         except Exception:
             logger.exception("run_job error")
-        scheduler.enter(run_interval, 1, run_job)
 
     def sl_job():
         try:
             move_sl_to_entry_if_tp1_hit(ex)
         except Exception:
             logger.exception("sl_job error")
-        scheduler.enter(sl_interval, 1, sl_job)
 
     def cancel_job():
         try:
             cancel_unpositioned_limits(ex)
         except Exception:
             logger.exception("cancel_job error")
-        scheduler.enter(cancel_interval, 1, cancel_job)
 
-    scheduler.enter(0, 1, run_job)
-    scheduler.enter(0, 1, sl_job)
-    scheduler.enter(0, 1, cancel_job)
-    scheduler.run()
+    run_step = max(1, run_interval // 60)
+    sl_step = max(1, sl_interval // 60)
+    cancel_step = max(1, cancel_interval // 60)
+
+    scheduler.add_job(run_job, "cron", minute=f"*/{run_step}", second=0)
+    scheduler.add_job(sl_job, "cron", minute=f"*/{sl_step}", second=0)
+    scheduler.add_job(cancel_job, "cron", minute=f"*/{cancel_step}", second=0)
+    scheduler.start()
 
 
 if __name__ == "__main__":
