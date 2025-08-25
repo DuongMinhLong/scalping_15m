@@ -224,7 +224,13 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
         "Checking for stale limit orders older than %s seconds", max_age_sec
     )
     try:
+        # Suppress CCXT warning when fetching all open orders without a symbol
+        exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
+        logger.info(
+            "Fetching all open orders with warnOnFetchOpenOrdersWithoutSymbol=False"
+        )
         orders = exchange.fetch_open_orders()
+        logger.info("Fetched %d open orders", len(orders or []))
     except Exception as e:
         logger.warning("cancel_unpositioned_limits fetch_open_orders error: %s", e)
         return
