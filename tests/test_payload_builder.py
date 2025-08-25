@@ -9,7 +9,7 @@ def test_build_15m_adds_volume(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema200", "rsi14", "macd"]:
+        for col in ["ema20", "ema50", "ema200", "rsi14", "macd", "atr14"]:
             df[col] = 0.0
         return df
 
@@ -34,7 +34,7 @@ def test_build_15m_formats_large_volume(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema200", "rsi14", "macd"]:
+        for col in ["ema20", "ema50", "ema200", "rsi14", "macd", "atr14"]:
             df[col] = 0.0
         return df
 
@@ -59,7 +59,7 @@ def test_build_15m_limits_length_and_snap(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd"]:
+        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd", "atr14"]:
             df[col] = 0.0
         return df
 
@@ -68,18 +68,19 @@ def test_build_15m_limits_length_and_snap(monkeypatch):
 
     df = pd.DataFrame(
         {
-            "open": range(15),
-            "high": range(15),
-            "low": range(15),
-            "close": range(15),
-            "volume": range(15),
+            "open": range(25),
+            "high": range(25),
+            "low": range(25),
+            "close": range(25),
+            "volume": range(25),
         },
-        index=pd.date_range("2024-01-01", periods=15, freq="15T"),
+        index=pd.date_range("2024-01-01", periods=25, freq="15T"),
     )
 
     res = payload_builder.build_15m(df)
-    assert len(res["ohlcv"]) == 10
-    assert all(len(v) == 10 for v in res["ind"].values())
+    assert len(res["ohlcv"]) == 20
+    assert all(len(v) == 20 for v in res["ind"].values())
+    assert "atr14" in res["ind"]
 
     snap = payload_builder.build_15m(df, limit=1)
     expected = payload_builder.build_snap(df)
@@ -139,7 +140,7 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
         )
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd"]:
+        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd", "atr14"]:
             df[col] = 0.0
         return df
 
