@@ -1,4 +1,4 @@
-"""Payload construction utilities for 15m scalping."""
+"""Payload construction utilities for 15m scalping with higher timeframe snapshots."""
 
 from __future__ import annotations
 
@@ -18,9 +18,29 @@ from positions import positions_snapshot
 
 logger = logging.getLogger(__name__)
 
-# Cache for 15m OHLCV data
+# Cache for OHLCV data by timeframe
 CACHE_M15: Dict[str, pd.DataFrame] = {}
+CACHE_H1: Dict[str, pd.DataFrame] = {}
+CACHE_H4: Dict[str, pd.DataFrame] = {}
 LOCK_M15 = Lock()
+LOCK_H1 = Lock()
+LOCK_H4 = Lock()
+
+
+def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict:
+    """Fetch ``timeframe`` data with caching and return :func:`build_snap`."""
+
+    with lock:
+        if symbol not in cache:
+            cache[symbol] = fetch_ohlcv_df(exchange, symbol, timeframe, 300)
+        else:
+            last_ts = int(cache[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, timeframe, 300, since=last_ts)
+            if not new.empty:
+                df = pd.concat([cache[symbol], new]).sort_index()
+                cache[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
+        df_tf = cache[symbol]
+    return build_snap(df_tf)
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -116,7 +136,12 @@ def coin_payload(exchange, symbol: str) -> Dict:
                 df = pd.concat([CACHE_M15[symbol], new]).sort_index()
                 CACHE_M15[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         m15 = CACHE_M15[symbol]
-    payload = {"pair": norm_pair_symbol(symbol), "m15": build_15m(m15)}
+    payload = {
+        "pair": norm_pair_symbol(symbol),
+        "m15": build_15m(m15),
+        "h1": _snap_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
+        "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
+    }
     return drop_empty(payload)
 
 
