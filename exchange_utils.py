@@ -147,10 +147,10 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
         den = (bid_vol + ask_vol) or 1.0
         imb = (bid_vol - ask_vol) / den
         return {
-            "spread": rfloat(spread, 6),
-            "bid_vol": rfloat(bid_vol, 6),
-            "ask_vol": rfloat(ask_vol, 6),
-            "imbalance": rfloat(imb, 6),
+            "sp": rfloat(spread, 6),
+            "b": rfloat(bid_vol, 6),
+            "a": rfloat(ask_vol, 6),
+            "im": rfloat(imb, 6),
         }
     except Exception:
         return {}

@@ -12,7 +12,7 @@ from typing import Dict, List, Set
 
 import pandas as pd
 
-from env_utils import compact, drop_empty, human_num, rfloat
+from env_utils import compact, compact_price, drop_empty, rfloat, rprice
 from exchange_utils import (
     fetch_ohlcv_df,
     load_usdtm,
@@ -121,18 +121,15 @@ def build_15m(df: pd.DataFrame, limit: int = 20, nd: int = 5) -> Dict:
 
     tail = data.tail(limit)
     ohlcv = [
-        compact([r.open, r.high, r.low, r.close], nd) + [human_num(r.volume)]
+        compact_price([r.open, r.high, r.low, r.close]) + [int(r.volume)]
         for _, r in tail.iterrows()
     ]
     ind = {
-        "ema20": compact(data["ema20"].tail(limit).tolist(), nd),
-        "ema50": compact(data["ema50"].tail(limit).tolist(), nd),
-        "ema200": compact(data["ema200"].tail(limit).tolist(), nd),
+        "ema20": compact_price(data["ema20"].tail(limit).tolist()),
+        "ema50": compact_price(data["ema50"].tail(limit).tolist()),
         "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
-        "macd": compact(data["macd"].tail(limit).tolist(), nd),
-        "atr14": compact(data["atr14"].tail(limit).tolist(), nd),
     }
-    return {"ohlcv": ohlcv, "ind": ind}
+    return {"o": ohlcv, "i": ind}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:
@@ -140,17 +137,12 @@ def build_snap(df: pd.DataFrame) -> Dict:
 
     data = add_indicators(df)
     return {
-        "ema20": rfloat(data["ema20"].iloc[-1]),
-        "ema50": rfloat(data["ema50"].iloc[-1]),
-        "ema99": rfloat(data["ema99"].iloc[-1]),
-        "ema200": rfloat(data["ema200"].iloc[-1]),
+        "ema20": rprice(data["ema20"].iloc[-1]),
+        "ema50": rprice(data["ema50"].iloc[-1]),
         "rsi": rfloat(data["rsi14"].iloc[-1]),
-        "macd": rfloat(data["macd"].iloc[-1]),
-        "trend": trend_lbl(
+        "t": trend_lbl(
             data["ema20"].iloc[-1],
             data["ema50"].iloc[-1],
-            data["ema200"].iloc[-1],
-            data["macd"].iloc[-1],
             data["rsi14"].iloc[-1],
         ),
     }
@@ -170,8 +162,8 @@ def coin_payload(exchange, symbol: str) -> Dict:
                 CACHE_M15[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         m15 = CACHE_M15[symbol]
     payload = {
-        "pair": norm_pair_symbol(symbol),
-        "m15": build_15m(m15),
+        "p": norm_pair_symbol(symbol),
+        "m": build_15m(m15),
         "h1": _snap_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
         "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
         "ob": orderbook_snapshot(exchange, symbol),

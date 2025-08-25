@@ -111,6 +111,36 @@ def rfloat(value: Any, nd: int = 6) -> float | None:
         return None
 
 
+def rprice(value: Any) -> float | None:
+    """Round price ``value`` using adaptive decimal places.
+
+    ``value`` above ``100`` uses two decimals, between ``1`` and ``100``
+    three decimals, and below ``1`` four decimals.  Non-finite inputs yield
+    ``None``.
+    """
+
+    try:
+        if value is None or (
+            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+        ):
+            return None
+        v = float(value)
+        av = abs(v)
+        if av >= 100:
+            return round(v, 2)
+        if av >= 1:
+            return round(v, 3)
+        return round(v, 4)
+    except Exception:
+        return None
+
+
+def compact_price(arr: List[Any]) -> List[float | None]:
+    """Apply :func:`rprice` to every element in ``arr``."""
+
+    return [rprice(v) for v in arr]
+
+
 def compact(arr: List[Any], nd: int = 6) -> List[float | None]:
     """Apply :func:`rfloat` to every element in ``arr``."""
 

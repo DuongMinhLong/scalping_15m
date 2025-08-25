@@ -9,7 +9,7 @@ def test_build_15m_adds_volume(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema200", "rsi14", "macd", "atr14"]:
+        for col in ["ema20", "ema50", "rsi14"]:
             df[col] = 0.0
         return df
 
@@ -27,14 +27,14 @@ def test_build_15m_adds_volume(monkeypatch):
     )
 
     res = payload_builder.build_15m(df)
-    assert all(len(candle) == 5 for candle in res["ohlcv"])
+    assert all(len(candle) == 5 for candle in res["o"])
 
 
-def test_build_15m_formats_large_volume(monkeypatch):
+def test_build_15m_volume_numeric(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema200", "rsi14", "macd", "atr14"]:
+        for col in ["ema20", "ema50", "rsi14"]:
             df[col] = 0.0
         return df
 
@@ -52,19 +52,19 @@ def test_build_15m_formats_large_volume(monkeypatch):
     )
 
     res = payload_builder.build_15m(df)
-    assert res["ohlcv"][-1][-1] == "312M"
+    assert res["o"][-1][-1] == 312066130
 
 
 def test_build_15m_limits_length_and_snap(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd", "atr14"]:
+        for col in ["ema20", "ema50", "rsi14"]:
             df[col] = 0.0
         return df
 
     monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
 
     df = pd.DataFrame(
         {
@@ -78,9 +78,9 @@ def test_build_15m_limits_length_and_snap(monkeypatch):
     )
 
     res = payload_builder.build_15m(df)
-    assert len(res["ohlcv"]) == 20
-    assert all(len(v) == 20 for v in res["ind"].values())
-    assert "atr14" in res["ind"]
+    assert len(res["o"]) == 20
+    assert all(len(v) == 20 for v in res["i"].values())
+    assert set(res["i"].keys()) == {"ema20", "ema50", "rsi14"}
 
     snap = payload_builder.build_15m(df, limit=1)
     expected = payload_builder.build_snap(df)
@@ -94,16 +94,13 @@ def test_build_snap_rounds_price(monkeypatch):
         for col, val in [
             ("ema20", 4270.7607),
             ("ema50", 0.0),
-            ("ema99", 0.0),
-            ("ema200", 0.0),
             ("rsi14", 0.0),
-            ("macd", 0.0),
         ]:
             df[col] = val
         return df
 
     monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
 
     df = pd.DataFrame(
         {
@@ -140,17 +137,17 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
         )
 
     def fake_add_indicators(df):
-        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd", "atr14"]:
+        for col in ["ema20", "ema50", "rsi14"]:
             df[col] = 0.0
         return df
 
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
     monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
-    monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym: {"spread": 0.1})
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
+    monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym: {"sp": 0.1})
 
     res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
-    assert "h1" in res and "h4" in res and res["ob"]["spread"] == 0.1
+    assert "h1" in res and "h4" in res and res["ob"]["sp"] == 0.1
 
 
 def test_time_payload_sessions():
