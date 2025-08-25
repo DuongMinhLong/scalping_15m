@@ -98,7 +98,7 @@ def strip_numeric_prefix(base: str) -> str:
     return re.sub(r"^\d+", "", base)
 
 
-def build_15m(df: pd.DataFrame, limit: int = 10, nd: int = 5) -> Dict:
+def build_15m(df: pd.DataFrame, limit: int = 20, nd: int = 5) -> Dict:
     """Build the detailed 15m payload with indicators and OHLCV.
 
     Parameters
@@ -130,6 +130,7 @@ def build_15m(df: pd.DataFrame, limit: int = 10, nd: int = 5) -> Dict:
         "ema200": compact(data["ema200"].tail(limit).tolist(), nd),
         "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
         "macd": compact(data["macd"].tail(limit).tolist(), nd),
+        "atr14": compact(data["atr14"].tail(limit).tolist(), nd),
     }
     return {"ohlcv": ohlcv, "ind": ind}
 
