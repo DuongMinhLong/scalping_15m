@@ -38,6 +38,34 @@ from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 logger = logging.getLogger(__name__)
 
 
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2):
+    """Place stop-loss and take-profit orders for an entry.
+
+    Args:
+        exchange: Exchange instance used to place orders.
+        symbol: Trading pair symbol.
+        side: Original entry side ("buy" or "sell").
+        qty: Total position size.
+        sl: Stop-loss price.
+        tp1: First take-profit price.
+        tp2: Second take-profit price.
+    """
+
+    qty_tp1 = rfloat(qty * 0.2, 8)
+    qty_tp2 = rfloat(qty - qty_tp1, 8)
+    exit_side = "sell" if side == "buy" else "buy"
+
+    exchange.create_order(
+        symbol, "stop", exit_side, qty, sl, {"stopPrice": sl, "reduceOnly": True}
+    )
+    exchange.create_order(
+        symbol, "limit", exit_side, qty_tp1, tp1, {"reduceOnly": True}
+    )
+    exchange.create_order(
+        symbol, "limit", exit_side, qty_tp2, tp2, {"reduceOnly": True}
+    )
+
+
 def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeout=120):
     """Chờ lệnh vào khớp rồi đặt SL/TP tương ứng."""
 
@@ -51,28 +79,7 @@ def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeou
                 continue
             if status != "closed":
                 return  # lệnh bị huỷ hoặc hết hạn
-            qty_tp1 = rfloat(qty * 0.2, 8)
-            qty_tp2 = rfloat(qty - qty_tp1, 8)
-            if side == "buy":
-                exchange.create_order(
-                    symbol, "stop", "sell", qty, sl, {"stopPrice": sl, "reduceOnly": True}
-                )
-                exchange.create_order(
-                    symbol, "limit", "sell", qty_tp1, tp1, {"reduceOnly": True}
-                )
-                exchange.create_order(
-                    symbol, "limit", "sell", qty_tp2, tp2, {"reduceOnly": True}
-                )
-            else:
-                exchange.create_order(
-                    symbol, "stop", "buy", qty, sl, {"stopPrice": sl, "reduceOnly": True}
-                )
-                exchange.create_order(
-                    symbol, "limit", "buy", qty_tp1, tp1, {"reduceOnly": True}
-                )
-                exchange.create_order(
-                    symbol, "limit", "buy", qty_tp2, tp2, {"reduceOnly": True}
-                )
+            _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2)
             return
         except Exception:
             time.sleep(2)  # lỗi tạm thời, thử lại

@@ -3,6 +3,8 @@ import os
 import pathlib
 import sys
 
+import pytest
+
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 os.environ.setdefault("OPENAI_API_KEY", "test")
 import futures_gpt_orchestrator_full as orch  # noqa: E402
@@ -11,6 +13,14 @@ import futures_gpt_orchestrator_full as orch  # noqa: E402
 class DummyExchange:
     def fetch_balance(self):
         return {"total": {"USDT": 1000}}
+
+
+class CaptureExchange:
+    def __init__(self):
+        self.orders = []
+
+    def create_order(self, symbol, typ, side, qty, price, params):
+        self.orders.append((symbol, typ, side, qty, price, params))
 
 
 def test_run_sends_coins_only(monkeypatch):
@@ -62,3 +72,14 @@ def test_run_sends_coins_only(monkeypatch):
     data = json.loads(fake_save_text.saved["ts_orders.json"])
     assert data["coins"] == []
     assert data["placed"] == []
+
+
+@pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
+def test_place_sl_tp(side, exit_side):
+    ex = CaptureExchange()
+    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2, 3)
+    assert ex.orders == [
+        ("BTC/USDT", "stop", exit_side, 10, 1, {"stopPrice": 1, "reduceOnly": True}),
+        ("BTC/USDT", "limit", exit_side, 2.0, 2, {"reduceOnly": True}),
+        ("BTC/USDT", "limit", exit_side, 8.0, 3, {"reduceOnly": True}),
+    ]
