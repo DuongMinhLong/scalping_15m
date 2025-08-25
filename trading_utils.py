@@ -38,6 +38,8 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
         tp2 = item.get("tp2")
         tp3 = item.get("tp3")
         risk = item.get("risk")
+        conf = item.get("conf")
+        rr = item.get("rr")
         try:
             entry = float(entry) if entry is not None else None
             sl = float(sl) if sl is not None else None
@@ -45,6 +47,8 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             tp2 = float(tp2) if tp2 not in (None, "") else None
             tp3 = float(tp3) if tp3 not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
+            conf = float(conf) if conf not in (None, "") else None
+            rr = float(rr) if rr not in (None, "") else None
         except Exception:
             continue
         if None in (entry, sl) or entry == sl:
@@ -69,6 +73,8 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
                 "tp2": tp2,
                 "tp3": tp3,
                 "risk": risk,
+                "conf": conf,
+                "rr": rr,
             }
         )
 
