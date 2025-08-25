@@ -46,23 +46,40 @@ def strip_numeric_prefix(base: str) -> str:
     return re.sub(r"^\d+", "", base)
 
 
-def build_15m(df: pd.DataFrame) -> Dict:
-    """Build the detailed 15m payload with indicators and OHLCV."""
+def build_15m(df: pd.DataFrame, limit: int = 10, nd: int = 5) -> Dict:
+    """Build the detailed 15m payload with indicators and OHLCV.
+
+    Parameters
+    ----------
+    df:
+        DataFrame containing at least OHLCV columns.
+    limit:
+        Number of rows to include from the end of ``df``.  When ``limit`` is
+        ``1`` or below, a lightweight snapshot from :func:`build_snap` is
+        returned instead of arrays.
+    nd:
+        Precision passed to :func:`compact` for rounding floating point values.
+    """
 
     data = add_indicators(df)
-    tail20 = data.tail(20)
-    ohlcv20 = [
-        compact([r.open, r.high, r.low, r.close]) + [human_num(r.volume)]
-        for _, r in tail20.iterrows()
+    if limit <= 1:
+        # ``build_snap`` calls ``add_indicators`` internally so we can pass the
+        # enriched ``data`` without harm.
+        return build_snap(data)
+
+    tail = data.tail(limit)
+    ohlcv = [
+        compact([r.open, r.high, r.low, r.close], nd) + [human_num(r.volume)]
+        for _, r in tail.iterrows()
     ]
     ind = {
-        "ema20": compact(data["ema20"].tail(20).tolist()),
-        "ema50": compact(data["ema50"].tail(20).tolist()),
-        "ema200": compact(data["ema200"].tail(20).tolist()),
-        "rsi14": compact(data["rsi14"].tail(20).tolist()),
-        "macd": compact(data["macd"].tail(20).tolist()),
+        "ema20": compact(data["ema20"].tail(limit).tolist(), nd),
+        "ema50": compact(data["ema50"].tail(limit).tolist(), nd),
+        "ema200": compact(data["ema200"].tail(limit).tolist(), nd),
+        "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
+        "macd": compact(data["macd"].tail(limit).tolist(), nd),
     }
-    return {"ohlcv": ohlcv20, "ind": ind}
+    return {"ohlcv": ohlcv, "ind": ind}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:
