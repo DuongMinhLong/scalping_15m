@@ -79,7 +79,7 @@ def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
     orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2, 3, 4)
     assert ex.orders == [
-        ("BTC/USDT", "stop", exit_side, 10, 1, {"stopPrice": 1, "reduceOnly": True}),
+        ("BTC/USDT", "limit", exit_side, 10, 1, {"stopPrice": 1, "reduceOnly": True}),
         ("BTC/USDT", "limit", exit_side, 3.0, 2, {"reduceOnly": True}),
         ("BTC/USDT", "limit", exit_side, 5.0, 3, {"reduceOnly": True}),
         ("BTC/USDT", "limit", exit_side, 2.0, 4, {"reduceOnly": True}),
