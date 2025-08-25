@@ -39,6 +39,18 @@ from positions import _norm_pair_from_symbol, get_open_position_pairs
 from prompts import build_prompts_mini
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
+# Configure root logger to write informational messages to both stdout and a file.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+file_handler = logging.FileHandler("bot.log")
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+)
+logging.getLogger().addHandler(file_handler)
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +78,9 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
 
 def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, tp3, timeout=120):
     """Chờ lệnh vào khớp rồi đặt SL/TP tương ứng."""
-
+    logger.info(
+        "Awaiting fill for %s order %s side=%s qty=%s", symbol, order_id, side, qty
+    )
     end = time.time() + timeout
     while time.time() < end:
         try:
@@ -78,16 +92,19 @@ def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, tp3, t
             if status != "closed":
                 return  # lệnh bị huỷ hoặc hết hạn
             _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3)
+            logger.info("Entry filled for %s; SL/TP placed", symbol)
             return
         except Exception as e:
             logger.warning("await_entry_fill fetch_order error: %s", e)
             time.sleep(2)  # lỗi tạm thời, thử lại
+    logger.info("Timeout waiting for order %s fill", order_id)
     return
 
 
 def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
 
+    logger.info("Run start live=%s limit=%s", run_live, limit)
     load_env()
     _, mini_model = get_models()
     ex = ex or make_exchange()
@@ -101,12 +118,15 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("run fetch_balance error: %s", e)
         capital = 0.0
+    logger.info("Capital available: %.2f USDT", capital)
 
     payload_full = build_payload(ex, limit)
     stamp = ts_prefix()
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
+    logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))
 
     if not payload_full.get("coins"):
+        logger.info("No coins in payload, exiting run")
         save_text(
             f"{stamp}_orders.json",
             dumps_min(
@@ -134,7 +154,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     acts = parse_mini_actions(mini_text)
     coins: List[Dict[str, Any]] = acts.get("coins", [])
     coins = enrich_tp_qty(ex, coins, capital)
-
+    logger.info("Model returned %d coin actions", len(coins))
 
     if coins:
         limits = {
@@ -150,6 +170,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
 
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
+        logger.info("Placing %d orders", len(coins))
         pos_pairs_live = get_open_position_pairs(ex)
         for c in coins:
             pair = (c.get("pair") or "").upper()
@@ -192,12 +213,16 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
         "placed": placed,
     }
     save_text(f"{stamp}_orders.json", dumps_min(result))
+    logger.info("Run complete: placed %d orders", len(placed))
     return {"ts": stamp, **result}
 
 
 def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
     """Cancel non-reduceOnly limit orders for pairs without positions once stale (>10m)."""
 
+    logger.info(
+        "Checking for stale limit orders older than %s seconds", max_age_sec
+    )
     try:
         orders = exchange.fetch_open_orders()
     except Exception as e:
@@ -392,22 +417,33 @@ def live_loop(
     if BlockingScheduler is None:
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
+    logger.info(
+        "Starting live loop limit=%s run_interval=%s sl_interval=%s cancel_interval=%s",
+        limit,
+        run_interval,
+        sl_interval,
+        cancel_interval,
+    )
+
     ex = make_exchange()
     scheduler = BlockingScheduler()
 
     def run_job():
+        logger.info("Scheduled run job triggered")
         try:
             run(run_live=True, limit=limit, ex=ex)
         except Exception:
             logger.exception("run_job error")
 
     def sl_job():
+        logger.info("Scheduled stop-loss check")
         try:
             move_sl_to_entry_if_tp1_hit(ex)
         except Exception:
             logger.exception("sl_job error")
 
     def cancel_job():
+        logger.info("Scheduled stale order cancel check")
         try:
             cancel_unpositioned_limits(ex)
         except Exception:
@@ -420,6 +456,7 @@ def live_loop(
     scheduler.add_job(run_job, "cron", minute=f"*/{run_step}", second=0)
     scheduler.add_job(sl_job, "cron", minute=f"*/{sl_step}", second=0)
     scheduler.add_job(cancel_job, "cron", minute=f"*/{cancel_step}", second=0)
+    logger.info("Scheduler starting")
     scheduler.start()
 
 

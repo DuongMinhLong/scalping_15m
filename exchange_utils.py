@@ -39,7 +39,7 @@ _MCAP_CACHE: Dict[str, object] = {"timestamp": 0.0, "data": []}
 
 def make_exchange() -> ccxt.Exchange:
     """Create a Binance futures client using API keys from the environment."""
-
+    logger.info("Initializing Binance futures exchange client")
     exchange = ccxt.binance(
         {"enableRateLimit": True, "options": {"defaultType": "future"}}
     )
@@ -64,6 +64,7 @@ def load_usdtm(exchange: ccxt.Exchange) -> Dict[str, Dict]:
             base = m.get("base", "")
             if base not in BLACKLIST_BASES:
                 out[m["symbol"]] = m
+    logger.info("Loaded %d USDT-margined markets", len(out))
     return out
 
 
