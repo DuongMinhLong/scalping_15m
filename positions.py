@@ -69,6 +69,7 @@ def positions_snapshot(exchange) -> List[Dict]:
         sl = None
         tp1 = None
         tp2 = None
+        tp3 = None
         try:
             orders = exchange.fetch_open_orders(sym)
         except Exception:
@@ -91,6 +92,8 @@ def positions_snapshot(exchange) -> List[Dict]:
             tp1 = rfloat(prices[0])
         if len(prices) >= 2:
             tp2 = rfloat(prices[1])
+        if len(prices) >= 3:
+            tp3 = rfloat(prices[2])
         out.append(
             drop_empty(
                 {
@@ -100,6 +103,7 @@ def positions_snapshot(exchange) -> List[Dict]:
                     "sl": sl,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "tp3": tp3,
                 }
             )
         )

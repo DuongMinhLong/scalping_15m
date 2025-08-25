@@ -38,21 +38,12 @@ from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 logger = logging.getLogger(__name__)
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2):
-    """Place stop-loss and take-profit orders for an entry.
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
+    """Place stop-loss and three take-profit orders for an entry."""
 
-    Args:
-        exchange: Exchange instance used to place orders.
-        symbol: Trading pair symbol.
-        side: Original entry side ("buy" or "sell").
-        qty: Total position size.
-        sl: Stop-loss price.
-        tp1: First take-profit price.
-        tp2: Second take-profit price.
-    """
-
-    qty_tp1 = rfloat(qty * 0.2, 8)
-    qty_tp2 = rfloat(qty - qty_tp1, 8)
+    qty_tp1 = rfloat(qty * 0.3, 8)
+    qty_tp2 = rfloat(qty * 0.5, 8)
+    qty_tp3 = rfloat(qty - qty_tp1 - qty_tp2, 8)
     exit_side = "sell" if side == "buy" else "buy"
 
     exchange.create_order(
@@ -64,9 +55,12 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2):
     exchange.create_order(
         symbol, "limit", exit_side, qty_tp2, tp2, {"reduceOnly": True}
     )
+    exchange.create_order(
+        symbol, "limit", exit_side, qty_tp3, tp3, {"reduceOnly": True}
+    )
 
 
-def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeout=120):
+def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, tp3, timeout=120):
     """Chờ lệnh vào khớp rồi đặt SL/TP tương ứng."""
 
     end = time.time() + timeout
@@ -79,7 +73,7 @@ def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, timeou
                 continue
             if status != "closed":
                 return  # lệnh bị huỷ hoặc hết hạn
-            _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2)
+            _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3)
             return
         except Exception:
             time.sleep(2)  # lỗi tạm thời, thử lại
@@ -138,7 +132,12 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
 
     if coins:
         limits = {
-            c["pair"]: {"sl": c["sl"], "tp1": c["tp1"], "tp2": c["tp2"]}
+            c["pair"]: {
+                "sl": c["sl"],
+                "tp1": c["tp1"],
+                "tp2": c["tp2"],
+                "tp3": c["tp3"],
+            }
             for c in coins
         }
         save_text("gpt_limits.json", dumps_min(limits))  # ghi file để job nền đọc
@@ -153,6 +152,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
             sl = c.get("sl")
             tp1 = c.get("tp1")
             tp2 = c.get("tp2")
+            tp3 = c.get("tp3")
             qty = c.get("qty")
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
@@ -162,7 +162,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
             )
             Thread(
                 target=await_entry_fill,
-                args=(ex, ccxt_sym, entry_order.get("id"), side, qty, sl, tp1, tp2),
+                args=(ex, ccxt_sym, entry_order.get("id"), side, qty, sl, tp1, tp2, tp3),
                 daemon=True,
             ).start()
             placed.append(
@@ -173,6 +173,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
                     "sl": sl,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "tp3": tp3,
                     "qty": qty,
                     "entry_id": entry_order.get("id"),
                 }
@@ -262,7 +263,7 @@ def _get_sl_tp_orders(exchange, symbol):
 
 
 def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
-    if len(tp_orders) < 2:
+    if len(tp_orders) < 3:
         return sl_orders, tp_orders
     if side == "buy":
         tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
@@ -339,7 +340,7 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         if not sl_orders:
             continue
         sl_orders, tp_orders = _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders)
-        if len(tp_orders) >= 2:
+        if len(tp_orders) >= 3:
             continue
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
