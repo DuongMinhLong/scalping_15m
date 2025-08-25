@@ -23,10 +23,12 @@ def test_build_payload_fills_from_market_cap(monkeypatch):
             "BBB/USDT:USDT": {"base": "BBB"},
         },
     )
+    monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["pair"] for c in payload["coins"]}
     assert pairs == {"AAAUSDT", "BBBUSDT"}
+    assert "time" in payload and "eth" in payload
 
 
 def test_build_payload_handles_numeric_prefix(monkeypatch):
@@ -39,7 +41,9 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
         "load_usdtm",
         lambda ex: {"1000PEPE/USDT:USDT": {"base": "1000PEPE"}},
     )
+    monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=1)
     pairs = {c["pair"] for c in payload["coins"]}
     assert pairs == {"1000PEPEUSDT"}
+    assert "time" in payload and "eth" in payload
