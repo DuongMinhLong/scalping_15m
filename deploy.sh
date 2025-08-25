@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 
-set -e
+# Exit immediately if a command exits with a non-zero status.
+set -euo pipefail
+
+# Helper function to print step numbers
+step=1
+step() { echo -e "\n[$step] $1"; step=$((step+1)); }
 
 echo "🚀 Starting full deployment for scalping 1h bot..."
 
-# Ensure python3 and pip are available
+step "Ensure python3 and pip are available"
 if ! command -v python3 >/dev/null; then
     echo "❌ Python3 not found. Please install Python 3.9+."
     exit 1
@@ -15,8 +20,7 @@ if ! command -v pip >/dev/null; then
     exit 1
 fi
 
-# Stop any running orchestrator via PID file
-echo "🛑 Checking and stopping old futures_gpt_orchestrator_full.py if running..."
+step "Stop any running orchestrator"
 PID_FILE="orchestrator.pid"
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE")
@@ -36,26 +40,22 @@ else
     echo "No existing PID file found"
 fi
 
-# Create virtual environment if missing
+step "Create virtual environment if missing"
 if [ ! -d "venv" ]; then
-    echo "🌐 Creating virtual environment..."
     python3 -m venv venv
     echo "✅ Virtual environment created."
 fi
 
-# Activate virtual environment
-echo "🔄 Activating virtual environment..."
+step "Activate virtual environment"
 source venv/bin/activate
 
-# Upgrade pip
-echo "🔧 Upgrading pip inside virtual environment..."
+step "Upgrade pip"
 pip install --upgrade pip
 
-# Install dependencies
-echo "📦 Installing Python libraries..."
+step "Install dependencies"
 pip install -r requirements.txt
 
-# Load environment variables from .env
+step "Load environment variables from .env"
 if [ -f .env ]; then
     set -o allexport
     source .env
@@ -67,15 +67,15 @@ else
     exit 1
 fi
 
-# Remove Python cache files
+step "Remove Python cache files"
 find . -name "*.pyc" -delete
 
-# Run orchestrator
-echo "🏃 Running futures_gpt_orchestrator_full.py in background with nohup ..."
+step "Run orchestrator"
 nohup python3 futures_gpt_orchestrator_full.py --loop > bot.log 2>&1 &
 echo $! > "$PID_FILE"
 
-# Deactivate environment
+step "Deactivate environment"
 deactivate
 
-echo "🎉 Deployment finished!"
+echo -e "\n🎉 Deployment finished!"
+
