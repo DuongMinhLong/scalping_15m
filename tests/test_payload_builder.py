@@ -117,3 +117,35 @@ def test_build_snap_rounds_price(monkeypatch):
 
     snap = payload_builder.build_snap(df)
     assert snap["ema20"] == 4270.76
+
+
+def test_coin_payload_includes_higher_timeframes(monkeypatch):
+    import pandas as pd
+
+    payload_builder.CACHE_M15.clear()
+    payload_builder.CACHE_H1.clear()
+    payload_builder.CACHE_H4.clear()
+
+    def fake_fetch(exchange, symbol, timeframe, limit, since=None):
+        return pd.DataFrame(
+            {
+                "open": [1.0],
+                "high": [1.0],
+                "low": [1.0],
+                "close": [1.0],
+                "volume": [1.0],
+            },
+            index=pd.date_range("2024-01-01", periods=1, freq="1H", tz="UTC"),
+        )
+
+    def fake_add_indicators(df):
+        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd"]:
+            df[col] = 0.0
+        return df
+
+    monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
+    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
+
+    res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
+    assert "h1" in res and "h4" in res
