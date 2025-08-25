@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from typing import Dict, List, Set
+import logging
 
 from env_utils import drop_empty, rfloat
+
+
+logger = logging.getLogger(__name__)
 
 
 def _norm_pair_from_symbol(symbol: str) -> str:
@@ -33,10 +37,11 @@ def get_open_position_pairs(exchange) -> Set[str]:
             try:
                 if abs(float(amt)) > 0:
                     out.add(pair)
-            except Exception:
+            except Exception as e:
+                logger.warning("get_open_position_pairs amt parse error: %s", e)
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("get_open_position_pairs fetch_positions error: %s", e)
     return out
 
 
@@ -46,7 +51,8 @@ def positions_snapshot(exchange) -> List[Dict]:
     out: List[Dict] = []
     try:
         positions = exchange.fetch_positions()
-    except Exception:
+    except Exception as e:
+        logger.warning("positions_snapshot fetch_positions error: %s", e)
         return out
 
     for p in positions or []:
@@ -61,7 +67,8 @@ def positions_snapshot(exchange) -> List[Dict]:
         try:
             amt_val = float(amt)
             entry_price = float(entry)
-        except Exception:
+        except Exception as e:
+            logger.warning("positions_snapshot parse error for %s: %s", pair, e)
             continue
         if amt_val == 0:
             continue
@@ -72,7 +79,8 @@ def positions_snapshot(exchange) -> List[Dict]:
         tp3 = None
         try:
             orders = exchange.fetch_open_orders(sym)
-        except Exception:
+        except Exception as e:
+            logger.warning("positions_snapshot fetch_open_orders error for %s: %s", sym, e)
             orders = []
         sl_orders = [
             o

@@ -75,7 +75,8 @@ def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, tp3, t
                 return  # lệnh bị huỷ hoặc hết hạn
             _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3)
             return
-        except Exception:
+        except Exception as e:
+            logger.warning("await_entry_fill fetch_order error: %s", e)
             time.sleep(2)  # lỗi tạm thời, thử lại
     return
 
@@ -93,7 +94,8 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     try:
         bal = ex.fetch_balance()
         capital = float((bal.get("total") or {}).get("USDT", 0.0))
-    except Exception:
+    except Exception as e:
+        logger.warning("run fetch_balance error: %s", e)
         capital = 0.0
 
     payload_full = build_payload(ex, limit)
@@ -194,7 +196,8 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
 
     try:
         orders = exchange.fetch_open_orders()
-    except Exception:
+    except Exception as e:
+        logger.warning("cancel_unpositioned_limits fetch_open_orders error: %s", e)
         return
 
     pos_pairs = get_open_position_pairs(exchange)
@@ -215,9 +218,11 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
                 continue
             try:
                 exchange.cancel_order(o.get("id"), symbol)
-            except Exception:
+            except Exception as e:
+                logger.warning("cancel_unpositioned_limits cancel_order error: %s", e)
                 continue
-        except Exception:
+        except Exception as e:
+            logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
 
 
@@ -231,7 +236,8 @@ def _get_position_info(pos):
         amt = (pos.get("info") or {}).get("positionAmt")
     try:
         amt_val = float(amt)
-    except Exception:
+    except Exception as e:
+        logger.warning("_get_position_info amt parse error: %s", e)
         return None
     if amt_val == 0:
         return None
@@ -239,7 +245,8 @@ def _get_position_info(pos):
     entry = pos.get("entryPrice") or (pos.get("info") or {}).get("entryPrice")
     try:
         entry_price = float(entry)
-    except Exception:
+    except Exception as e:
+        logger.warning("_get_position_info entry parse error: %s", e)
         return None
     return symbol, side, entry_price, amt_val
 
@@ -251,11 +258,13 @@ def _get_sl_tp_orders(exchange, symbol):
         if last is None:
             last = (ticker.get("info") or {}).get("lastPrice")
         last_price = float(last)
-    except Exception:
+    except Exception as e:
+        logger.warning("_get_sl_tp_orders fetch_ticker error for %s: %s", symbol, e)
         last_price = 0
     try:
         orders = exchange.fetch_open_orders(symbol)
-    except Exception:
+    except Exception as e:
+        logger.warning("_get_sl_tp_orders fetch_open_orders error for %s: %s", symbol, e)
         return [], [], last_price
     sl_orders = [
         o
@@ -290,12 +299,13 @@ def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
     qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
     try:
         exchange.cancel_order(tp1_order.get("id"), symbol)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("_handle_tp1_hit cancel_order error: %s", e)
     try:
         price = float(tp1_order.get("price") or 0)
         exchange.create_order(symbol, "limit", exit_side, qty_tp1, price, {"reduceOnly": True})
-    except Exception:
+    except Exception as e:
+        logger.warning("_handle_tp1_hit create_order error: %s", e)
         return sl_orders, tp_orders
     sl_orders, tp_orders, _ = _get_sl_tp_orders(exchange, symbol)
     return sl_orders, tp_orders
@@ -304,14 +314,15 @@ def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
 def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
     try:
         sl_price = float(sl_order.get("price") or sl_order.get("stopPrice") or 0)
-    except Exception:
+    except Exception as e:
+        logger.warning("_update_sl_to_entry parse sl price error: %s", e)
         sl_price = 0
     if abs(sl_price - entry_price) < 1e-8:
         return
     try:
         exchange.cancel_order(sl_order.get("id"), symbol)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("_update_sl_to_entry cancel_order error: %s", e)
     try:
         qty = abs(amt_val)
         if side == "buy":
@@ -332,7 +343,8 @@ def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
                 entry_price,
                 {"stopPrice": entry_price, "reduceOnly": True},
             )
-    except Exception:
+    except Exception as e:
+        logger.warning("_update_sl_to_entry create_order error: %s", e)
         return
 
 
@@ -341,7 +353,8 @@ def move_sl_to_entry_if_tp1_hit(exchange):
 
     try:
         positions = exchange.fetch_positions()
-    except Exception:
+    except Exception as e:
+        logger.warning("move_sl_to_entry_if_tp1_hit fetch_positions error: %s", e)
         return
 
     for pos in positions or []:
