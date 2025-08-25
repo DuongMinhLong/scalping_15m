@@ -47,7 +47,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
     exit_side = "sell" if side == "buy" else "buy"
 
     exchange.create_order(
-        symbol, "stop", exit_side, qty, sl, {"stopPrice": sl, "reduceOnly": True}
+        symbol, "limit", exit_side, qty, sl, {"stopPrice": sl, "reduceOnly": True}
     )
     exchange.create_order(
         symbol, "limit", exit_side, qty_tp1, tp1, {"reduceOnly": True}
@@ -257,8 +257,20 @@ def _get_sl_tp_orders(exchange, symbol):
         orders = exchange.fetch_open_orders(symbol)
     except Exception:
         return [], [], last_price
-    sl_orders = [o for o in orders if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")]
-    tp_orders = [o for o in orders if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")]
+    sl_orders = [
+        o
+        for o in orders
+        if (o.get("type") or "").lower() == "limit"
+        and o.get("reduceOnly")
+        and (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
+    ]
+    tp_orders = [
+        o
+        for o in orders
+        if (o.get("type") or "").lower() == "limit"
+        and o.get("reduceOnly")
+        and not (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
+    ]
     return sl_orders, tp_orders, last_price
 
 
@@ -281,7 +293,8 @@ def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
     except Exception:
         pass
     try:
-        exchange.create_order(symbol, "market", exit_side, qty_tp1, None, {"reduceOnly": True})
+        price = float(tp1_order.get("price") or 0)
+        exchange.create_order(symbol, "limit", exit_side, qty_tp1, price, {"reduceOnly": True})
     except Exception:
         return sl_orders, tp_orders
     sl_orders, tp_orders, _ = _get_sl_tp_orders(exchange, symbol)
@@ -304,7 +317,7 @@ def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
         if side == "buy":
             exchange.create_order(
                 symbol,
-                "stop",
+                "limit",
                 "sell",
                 qty,
                 entry_price,
@@ -313,7 +326,7 @@ def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
         else:
             exchange.create_order(
                 symbol,
-                "stop",
+                "limit",
                 "buy",
                 qty,
                 entry_price,

@@ -77,15 +77,23 @@ def positions_snapshot(exchange) -> List[Dict]:
         sl_orders = [
             o
             for o in orders
-            if (o.get("type") or "").lower() == "stop" and o.get("reduceOnly")
+            if (o.get("type") or "").lower() == "limit"
+            and o.get("reduceOnly")
+            and (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
         ]
         tp_orders = [
             o
             for o in orders
-            if (o.get("type") or "").lower() == "limit" and o.get("reduceOnly")
+            if (o.get("type") or "").lower() == "limit"
+            and o.get("reduceOnly")
+            and not (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
         ]
         if sl_orders:
-            sl = rfloat(sl_orders[0].get("stopPrice") or sl_orders[0].get("price"))
+            sl = rfloat(
+                sl_orders[0].get("stopPrice")
+                or (sl_orders[0].get("info") or {}).get("stopPrice")
+                or sl_orders[0].get("price")
+            )
         prices = [float(o.get("price") or 0) for o in tp_orders]
         prices.sort(reverse=(side == "sell"))
         if len(prices) >= 1:
