@@ -55,6 +55,37 @@ def test_build_15m_formats_large_volume(monkeypatch):
     assert res["ohlcv"][-1][-1] == "312M"
 
 
+def test_build_15m_limits_length_and_snap(monkeypatch):
+    import pandas as pd
+
+    def fake_add_indicators(df):
+        for col in ["ema20", "ema50", "ema99", "ema200", "rsi14", "macd"]:
+            df[col] = 0.0
+        return df
+
+    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: "flat")
+
+    df = pd.DataFrame(
+        {
+            "open": range(15),
+            "high": range(15),
+            "low": range(15),
+            "close": range(15),
+            "volume": range(15),
+        },
+        index=pd.date_range("2024-01-01", periods=15, freq="15T"),
+    )
+
+    res = payload_builder.build_15m(df)
+    assert len(res["ohlcv"]) == 10
+    assert all(len(v) == 10 for v in res["ind"].values())
+
+    snap = payload_builder.build_15m(df, limit=1)
+    expected = payload_builder.build_snap(df)
+    assert snap == expected
+
+
 def test_build_snap_rounds_price(monkeypatch):
     import pandas as pd
 
