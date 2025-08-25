@@ -375,15 +375,24 @@ def live_loop(
     scheduler = sched.scheduler(time.time, time.sleep)
 
     def run_job():
-        run(run_live=True, limit=limit, ex=ex)
+        try:
+            run(run_live=True, limit=limit, ex=ex)
+        except Exception:
+            logger.exception("run_job error")
         scheduler.enter(run_interval, 1, run_job)
 
     def sl_job():
-        move_sl_to_entry_if_tp1_hit(ex)
+        try:
+            move_sl_to_entry_if_tp1_hit(ex)
+        except Exception:
+            logger.exception("sl_job error")
         scheduler.enter(sl_interval, 1, sl_job)
 
     def cancel_job():
-        cancel_unpositioned_limits(ex)
+        try:
+            cancel_unpositioned_limits(ex)
+        except Exception:
+            logger.exception("cancel_job error")
         scheduler.enter(cancel_interval, 1, cancel_job)
 
     scheduler.enter(0, 1, run_job)
