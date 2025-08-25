@@ -37,7 +37,7 @@ def test_run_sends_coins_only(monkeypatch):
 
     def fake_build_payload(ex, limit):
         build_called["called"] = True
-        return {"coins": [{"pair": "ETHUSDT"}, {"pair": "BTCUSDT"}]}
+        return {"coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}]}
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
 
@@ -59,7 +59,7 @@ def test_run_sends_coins_only(monkeypatch):
     assert build_called.get("called")
     payload_str = captured.get("user", "").split("DATA:")[-1]
     data = json.loads(payload_str)
-    assert any(c.get("pair") == "ETHUSDT" for c in data.get("coins", []))
+    assert any(c.get("p") == "ETHUSDT" for c in data.get("coins", []))
     assert "positions" not in data
     assert res == {
         "ts": "ts",
