@@ -1,124 +1,26 @@
-"""Payload construction utilities for building model inputs."""
+"""Payload construction utilities for 15m scalping."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Set
-
+import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
-
-import logging
-import os
-import re
 from threading import Lock
+from typing import Dict, List, Set
 
 import pandas as pd
-import requests
 
-from env_utils import compact, drop_empty, human_num, now_ms, rfloat
-from exchange_utils import (
-    cvd_snapshot,
-    fetch_ohlcv_df,
-    funding_snapshot,
-    liquidation_snapshot,
-    open_interest_snapshot,
-    orderbook_snapshot,
-    load_usdtm,
-    top_by_qv,
-    top_by_market_cap,
-)
-from indicators import add_indicators, trend_lbl, detect_sr_levels
+from env_utils import compact, drop_empty, human_num, rfloat
+from exchange_utils import fetch_ohlcv_df, load_usdtm, top_by_qv, top_by_market_cap
+from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
 
 logger = logging.getLogger(__name__)
 
-
-def _truncate(s: str | None, max_len: int = 120) -> str | None:
-    if not s:
-        return None
-    s = " ".join(str(s).split())
-    return s[:max_len].rstrip() + ("…" if len(s) > max_len else "")
-
-
-def session_meta() -> Dict[str, int | str]:
-    """Return current trading session label and minutes remaining."""
-
-    now = datetime.now(timezone.utc)
-    hour = now.hour
-    if 0 <= hour < 8:
-        label = "Asia"
-        end = now.replace(hour=8, minute=0, second=0, microsecond=0)
-    elif 8 <= hour < 16:
-        label = "Europe"
-        end = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    else:
-        label = "US"
-        end = (now + timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-    return {
-        "label": label,
-        "utc_hour": hour,
-        "mins_to_close": max(0, int((end - now).total_seconds() // 60)),
-    }
-
-
-def news_snapshot() -> Dict[str, str]:
-    """Fetch top-5 crypto headlines from CryptoPanic and return a compact string.
-
-    - Requires ``NEWS_API_KEY`` in env (CryptoPanic auth_token).
-    - Optimized for tokens: returns {"news": "t1 • t2 • ..."} with max 5 items.
-    """
-
-    api_key = os.getenv("NEWS_API_KEY")
-    if not api_key:
-        logger.warning("NEWS_API_KEY not set")
-        return {}
-
-    try:
-        resp = requests.get(
-            "https://cryptopanic.com/api/v1/posts/",
-            params={
-                "auth_token": api_key,
-                "public": True,
-                "kind": "news",
-                "filter": "hot",
-                "regions": "en",
-            },
-            timeout=10,
-            headers={"Accept": "application/json"},
-        )
-        resp.raise_for_status()
-        payload = resp.json() or {}
-        results: List[dict] = payload.get("results", [])
-    except Exception as exc:  # pragma: no cover - network errors
-        logger.error("Failed fetching news: %s", exc)
-        return {}
-
-    headlines: List[str] = []
-    for item in results[:5]:
-        title = (item.get("title") or "").strip()
-        domain = (
-            (item.get("domain") or (item.get("source") or {}).get("title") or "").strip()
-        )
-        if not title:
-            continue
-        text = f"{title} – {domain}" if domain else title
-        text = _truncate(text, 120)
-        if text:
-            headlines.append(text)
-
-    return drop_empty({"news": " • ".join(headlines)})
-
-
-CACHE_H1: Dict[str, pd.DataFrame] = {}
-CACHE_H4: Dict[str, pd.DataFrame] = {}
-CACHE_D1: Dict[str, pd.DataFrame] = {}
-
-LOCK_H1 = Lock()   # khoá bảo vệ cache H1
-LOCK_H4 = Lock()   # khoá bảo vệ cache H4
-LOCK_D1 = Lock()   # khoá bảo vệ cache D1
+# Cache for 15m OHLCV data
+CACHE_M15: Dict[str, pd.DataFrame] = {}
+LOCK_M15 = Lock()
 
 
 def norm_pair_symbol(symbol: str) -> str:
@@ -144,8 +46,8 @@ def strip_numeric_prefix(base: str) -> str:
     return re.sub(r"^\d+", "", base)
 
 
-def build_1h(df: pd.DataFrame) -> Dict:
-    """Build the detailed 1h payload with indicators and OHLCV."""
+def build_15m(df: pd.DataFrame) -> Dict:
+    """Build the detailed 15m payload with indicators and OHLCV."""
 
     data = add_indicators(df)
     tail20 = data.tail(20)
@@ -153,28 +55,14 @@ def build_1h(df: pd.DataFrame) -> Dict:
         compact([r.open, r.high, r.low, r.close]) + [human_num(r.volume)]
         for _, r in tail20.iterrows()
     ]
-    swing_high = rfloat(data["high"].tail(20).max())
-    swing_low = rfloat(data["low"].tail(20).min())
-    key = {
-        "prev_close": rfloat(data.close.iloc[-2]),
-        "last_close": rfloat(data.close.iloc[-1]),
-        "swing_high": swing_high,
-        "swing_low": swing_low,
-    }
-    sr_levels = [rfloat(lvl) for lvl in detect_sr_levels(data, lookback=5)]
     ind = {
         "ema20": compact(data["ema20"].tail(20).tolist()),
         "ema50": compact(data["ema50"].tail(20).tolist()),
-        "ema99": compact(data["ema99"].tail(20).tolist()),
         "ema200": compact(data["ema200"].tail(20).tolist()),
         "rsi14": compact(data["rsi14"].tail(20).tolist()),
         "macd": compact(data["macd"].tail(20).tolist()),
-        "macd_sig": compact(data["macd_sig"].tail(20).tolist()),
-        "macd_hist": compact(data["macd_hist"].tail(20).tolist()),
-        "atr14": compact(data["atr14"].tail(20).tolist()),
-        "vol_spike": compact(data["vol_spike"].tail(20).tolist()),
     }
-    return {"ohlcv": ohlcv20, "ind": ind, "key": key, "sr_levels": sr_levels}
+    return {"ohlcv": ohlcv20, "ind": ind}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:
@@ -199,74 +87,29 @@ def build_snap(df: pd.DataFrame) -> Dict:
 
 
 def coin_payload(exchange, symbol: str) -> Dict:
-    """Xây dựng payload cho từng symbol với cache an toàn thread."""
+    """Build payload for a single symbol with thread-safe caching."""
 
-    with LOCK_H1:
-        if symbol not in CACHE_H1:
-            CACHE_H1[symbol] = fetch_ohlcv_df(exchange, symbol, "1h", 300)
+    with LOCK_M15:
+        if symbol not in CACHE_M15:
+            CACHE_M15[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
         else:
-            last_ts = int(CACHE_H1[symbol].index[-1].timestamp() * 1000)
-            new = fetch_ohlcv_df(exchange, symbol, "1h", 300, since=last_ts)
+            last_ts = int(CACHE_M15[symbol].index[-1].timestamp() * 1000)
+            new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
             if not new.empty:
-                df = pd.concat([CACHE_H1[symbol], new]).sort_index()
-                CACHE_H1[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-        h1 = CACHE_H1[symbol]
-    with LOCK_H4:
-        if symbol not in CACHE_H4:
-            CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
-        else:
-            last_ts = int(CACHE_H4[symbol].index[-1].timestamp() * 1000)
-            new = fetch_ohlcv_df(exchange, symbol, "4h", 300, since=last_ts)
-            if not new.empty:
-                df = pd.concat([CACHE_H4[symbol], new]).sort_index()
-                CACHE_H4[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-        h4 = CACHE_H4[symbol]
-    with LOCK_D1:
-        if symbol not in CACHE_D1:
-            CACHE_D1[symbol] = fetch_ohlcv_df(exchange, symbol, "1d", 300)
-        else:
-            last_ts = int(CACHE_D1[symbol].index[-1].timestamp() * 1000)
-            new = fetch_ohlcv_df(exchange, symbol, "1d", 300, since=last_ts)
-            if not new.empty:
-                df = pd.concat([CACHE_D1[symbol], new]).sort_index()
-                CACHE_D1[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-        d1 = CACHE_D1[symbol]
-    payload = {
-        "pair": norm_pair_symbol(symbol),
-        "h1": build_1h(h1),
-        "h4": build_snap(h4),
-        "d1": build_snap(d1),
-        "funding": funding_snapshot(exchange, symbol),
-        "oi": open_interest_snapshot(exchange, symbol),
-        "cvd": cvd_snapshot(exchange, symbol),
-        "liquidation": liquidation_snapshot(exchange, symbol),
-        "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
-    }
+                df = pd.concat([CACHE_M15[symbol], new]).sort_index()
+                CACHE_M15[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
+        m15 = CACHE_M15[symbol]
+    payload = {"pair": norm_pair_symbol(symbol), "m15": build_15m(m15)}
     return drop_empty(payload)
 
 
-def eth_bias(exchange) -> Dict:
-    """Trả về snapshot H4/D1 của ETH với cache an toàn."""
-
-    symbol = "ETH/USDT"
-    with LOCK_H4:
-        if symbol not in CACHE_H4:
-            CACHE_H4[symbol] = fetch_ohlcv_df(exchange, symbol, "4h", 300)
-        h4 = CACHE_H4[symbol]
-    with LOCK_D1:
-        if symbol not in CACHE_D1:
-            CACHE_D1[symbol] = fetch_ohlcv_df(exchange, symbol, "1d", 300)
-        d1 = CACHE_D1[symbol]
-    return {"h4": build_snap(h4), "d1": build_snap(d1)}
-
-
-def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = None) -> Dict:
-    """Build the full payload used by the orchestrator."""
+def build_payload(exchange, limit: int = 10, exclude_pairs: Set[str] | None = None) -> Dict:
+    """Build the payload used by the orchestrator (15m only)."""
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    symbols_raw = top_by_qv(exchange, limit * 3)
+    symbols_raw = top_by_qv(exchange, limit * 2)
     mc_list = top_by_market_cap(max(limit, 30))
     mc_bases = set(mc_list)
     symbols: List[str] = []
@@ -275,7 +118,7 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         pair = norm_pair_symbol(s)
         base = pair[:-4]
         norm_base = strip_numeric_prefix(base)
-        if pair in exclude_pairs or norm_base not in mc_bases:
+        if pair in exclude_pairs or pair in pos_pairs or norm_base not in mc_bases:
             continue
         symbols.append(s)
         used_bases.add(norm_base)
@@ -296,14 +139,10 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
             if sym not in markets:
                 continue
             pair = norm_pair_symbol(sym)
-            if pair in exclude_pairs:
+            if pair in exclude_pairs or pair in pos_pairs:
                 continue
             symbols.append(sym)
             used_bases.add(base)
-    for pair in pos_pairs:
-        sym = pair_to_symbol(pair)
-        if sym and sym not in symbols:
-            symbols.append(sym)
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
@@ -314,11 +153,4 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
                 coins.append(fut.result())
             except Exception as e:
                 logger.warning("coin_payload failed for %s: %s", sym, e)
-    return {
-        "time": {"now_utc": now_ms(), "session": session_meta()},
-        "eth": eth_bias(exchange),
-        "news": news_snapshot(),
-        "coins": [drop_empty(c) for c in coins],
-        "positions": positions,
-    }
-
+    return {"coins": [drop_empty(c) for c in coins]}

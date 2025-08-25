@@ -10,14 +10,11 @@ PROMPT_SYS_MINI = (
 )
 
 PROMPT_USER_MINI = (
-    "Dữ liệu đầy đủ dưới đây (không bỏ sót bất kỳ trường nào). "
-    "Phân tích toàn bộ như 1 trader chuyên nghiệp, kết hợp price action, đa khung (1H/H4/D1), ETH bias, "
-    "orderbook, funding/OI/CVD/liquidation, news. "
-    "Nếu phát hiện nguy cơ đảo chiều thì có thể đóng vị thế bằng hành động \"close_all\" hoặc \"close_partial\". "
-    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp2\":0.0}],"
-    "\"close_all\":[{\"pair\":\"SYMBOL\"}],"
-    "\"close_partial\":[{\"pair\":\"SYMBOL\",\"pct\":50}]}. "
-    "Không có tín hiệu → {\"coins\":[],\"close_all\":[],\"close_partial\":[]}. "
+    "Dữ liệu 15m dưới đây cho các coin. "
+    "Phân tích toàn bộ như một trader chuyên nghiệp, kết hợp price action, đa khung (1H/H4/D1), ETH bias. "
+    "Chỉ vào lệnh khi độ tự tin > 7 và tỉ lệ RR tốt. "
+    "Trả về JSON duy nhất dạng {\\\"coins\\\":[{\\\"pair\\\":\\\"SYMBOL\\\",\\\"entry\\\":0.0,\\\"sl\\\":0.0,\\\"tp2\\\":0.0}]}. "
+    "Không có tín hiệu → {\\\"coins\\\":[]}. "
     "Chỉ chọn LIMIT entry tối ưu (best limit entry). "
     "DATA:{payload}"
 )
