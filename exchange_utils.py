@@ -233,6 +233,13 @@ def liquidation_snapshot(
     exchange: ccxt.Exchange, symbol: str, limit: int = 50
 ) -> Dict:
     """Return recent liquidation statistics for ``symbol``."""
+    # ``fetch_liquidations`` is not implemented for all exchanges.  The
+    # Binance client used by this project, for example, does not support it
+    # which resulted in noisy ``NotSupported`` warnings.  Guard against that
+    # here so we simply return an empty payload when the capability is
+    # missing.
+    if not getattr(exchange, "has", {}).get("fetchLiquidations"):
+        return {}
 
     try:
         rows = exchange.fetch_liquidations(symbol, limit=limit)

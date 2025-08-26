@@ -87,3 +87,14 @@ def test_top_by_market_cap_filters_blacklist(monkeypatch):
     exchange_utils._MCAP_CACHE["data"] = []
     res = exchange_utils.top_by_market_cap(limit=3, ttl=0)
     assert res == ["ETH", "XRP", "ADA"]
+
+
+def test_liquidation_snapshot_unsupported_exchange(caplog):
+    class DummyExchange:
+        has = {"fetchLiquidations": False}
+
+    ex = DummyExchange()
+    with caplog.at_level("WARNING"):
+        res = exchange_utils.liquidation_snapshot(ex, "ETH/USDT:USDT")
+    assert res == {}
+    assert "liquidation_snapshot error" not in caplog.text
