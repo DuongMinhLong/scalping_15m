@@ -84,7 +84,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
 
     logger.info("Run start live=%s limit=%s", run_live, limit)
     load_env()
-    _, mini_model = get_models()
+    nano_model, mini_model = get_models()
     ex = ex or make_exchange()
 
     if run_live:
@@ -133,6 +133,8 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     coins: List[Dict[str, Any]] = acts.get("coins", [])
     coins = enrich_tp_qty(ex, coins, capital)
     logger.info("Model returned %d coin actions", len(coins))
+    logger.info("Mini output JSON:\n%s", mini_text)
+
 
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
