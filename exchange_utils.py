@@ -98,13 +98,14 @@ def top_by_market_cap(limit: int = 30, *, ttl: float = 3600) -> List[str]:
     if cached and now - _MCAP_CACHE["timestamp"] < ttl and len(cached) >= limit:
         return cached[:limit]
 
+    per_page = min(250, max(limit * 2, limit + len(BLACKLIST_BASES)))
     try:
         resp = requests.get(
             "https://api.coingecko.com/api/v3/coins/markets",
             params={
                 "vs_currency": "usd",
                 "order": "market_cap_desc",
-                "per_page": limit,
+                "per_page": per_page,
                 "page": 1,
                 "sparkline": "false",
             },
@@ -112,10 +113,14 @@ def top_by_market_cap(limit: int = 30, *, ttl: float = 3600) -> List[str]:
         )
         resp.raise_for_status()
         data = resp.json() or []
-        symbols = [str(item.get("symbol", "")).upper() for item in data]
+        symbols = [
+            str(item.get("symbol", "")).upper()
+            for item in data
+            if str(item.get("symbol", "")).upper() not in BLACKLIST_BASES
+        ]
         _MCAP_CACHE["timestamp"] = now
         _MCAP_CACHE["data"] = symbols
-        return symbols
+        return symbols[:limit]
     except Exception as e:
         logger.warning("top_by_market_cap error: %s", e)
         return cached[:limit] if cached else []
