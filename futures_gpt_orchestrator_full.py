@@ -456,34 +456,28 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         if not price_hit:
             continue
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
-
 def live_loop(
     limit: int = 30,
-    run_interval: int = 3600,
-    sl_interval: int = 300,
-    cancel_interval: int = 600,
-    add_interval: int = 60,
+    run_interval: int = 3600,      # orchestrator job (1h)
+    sl_interval: int = 300,        # stop-loss check (5m)
+    cancel_interval: int = 600,    # cancel stale orders (10m)
+    add_interval: int = 60,        # SL/TP add (1m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
-    The orchestrator job defaults to running every hour, the stop-loss
-    check runs every five minutes, stale limit orders are cancelled every
-    ten minutes, and pending limit orders are checked every minute to add
-    SL/TP. These cadences align with wall-clock time via cron-based
-    scheduling. The ``*_interval`` arguments are in seconds and should be
-    multiples of 60.
+    - Orchestrator job mặc định chạy mỗi giờ (đúng mốc HH:00).
+    - Stop-loss check mỗi 5 phút.
+    - Cancel stale limit orders mỗi 10 phút.
+    - Check để add SL/TP mỗi 1 phút.
     """
 
     if BlockingScheduler is None:
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s run_interval=%s sl_interval=%s cancel_interval=%s add_interval=%s",
-        limit,
-        run_interval,
-        sl_interval,
-        cancel_interval,
-        add_interval,
+        "Starting live loop limit=%s run_interval=%s sl_interval=%s "
+        "cancel_interval=%s add_interval=%s",
+        limit, run_interval, sl_interval, cancel_interval, add_interval,
     )
 
     ex = make_exchange()
@@ -517,18 +511,16 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
 
-    run_step = max(1, run_interval // 60)
-    sl_step = max(1, sl_interval // 60)
-    cancel_step = max(1, cancel_interval // 60)
-    limit_step = max(1, add_interval // 60)
+    # Orchestrator: chạy mỗi giờ đúng HH:00
+    scheduler.add_job(run_job, "cron", minute=0, second=0)
 
-    scheduler.add_job(run_job, "cron", minute=f"*/{run_step}", second=0)
-    scheduler.add_job(sl_job, "cron", minute=f"*/{sl_step}", second=0)
-    scheduler.add_job(cancel_job, "cron", minute=f"*/{cancel_step}", second=0)
-    scheduler.add_job(limit_job, "cron", minute=f"*/{limit_step}", second=0)
+    # Các job còn lại chạy theo interval
+    scheduler.add_job(sl_job, "interval", seconds=sl_interval)
+    scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
+    scheduler.add_job(limit_job, "interval", seconds=add_interval)
+
     logger.info("Scheduler starting")
     scheduler.start()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
