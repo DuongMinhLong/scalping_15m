@@ -61,3 +61,29 @@ def test_top_by_market_cap(monkeypatch):
     assert res1 == ["BTC", "ETH"]
     assert res2 == ["BTC", "ETH"]
     assert len(calls) == 1
+
+
+def test_liquidation_snapshot_skips_when_unsupported():
+    class DummyExchange:
+        has = {"fetchLiquidations": False}
+
+        def fetch_liquidations(self, symbol, limit):  # pragma: no cover - should not be called
+            raise AssertionError("fetch_liquidations should not be called")
+
+    exchange = DummyExchange()
+    assert exchange_utils.liquidation_snapshot(exchange, "ETH/USDT:USDT") == {}
+
+
+def test_liquidation_snapshot_basic():
+    class DummyExchange:
+        has = {"fetchLiquidations": True}
+
+        def fetch_liquidations(self, symbol, limit):
+            return [
+                {"amount": 1, "side": "long"},
+                {"amount": 2, "side": "short"},
+            ]
+
+    exchange = DummyExchange()
+    res = exchange_utils.liquidation_snapshot(exchange, "ETH/USDT:USDT")
+    assert res == {"long_liq": 1.0, "short_liq": 2.0}

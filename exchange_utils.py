@@ -229,6 +229,11 @@ def liquidation_snapshot(
 ) -> Dict:
     """Return recent liquidation statistics for ``symbol``."""
 
+    # Some exchanges (e.g. Binance) do not implement ``fetch_liquidations``.
+    # Return an empty result quietly instead of logging a warning every call.
+    if not getattr(exchange, "has", {}).get("fetchLiquidations", False):
+        return {}
+
     try:
         rows = exchange.fetch_liquidations(symbol, limit=limit)
         long_amt = 0.0
@@ -244,6 +249,9 @@ def liquidation_snapshot(
             "long_liq": rfloat(long_amt, 6),
             "short_liq": rfloat(short_amt, 6),
         }
+    except ccxt.NotSupported:
+        # Defensive: if the exchange falsely claims support, ignore the error.
+        return {}
     except Exception as e:
         logger.warning("liquidation_snapshot error for %s: %s", symbol, e)
         return {}
