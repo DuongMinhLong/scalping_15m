@@ -21,11 +21,19 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     data = df.copy()
     if USE_PTA:
+        # ``pandas_ta`` implementation when available for richer indicators.
         data["ema20"] = ta.ema(data["close"], length=20)
         data["ema50"] = ta.ema(data["close"], length=50)
+        data["ema99"] = ta.ema(data["close"], length=99)
+        data["ema200"] = ta.ema(data["close"], length=200)
         data["rsi14"] = ta.rsi(data["close"], length=14)
+        macd = ta.macd(data["close"], fast=12, slow=26, signal=9)
+        data["macd"] = macd.get("MACD_12_26_9")
+        data["macd_sig"] = macd.get("MACDs_12_26_9")
+        data["macd_hist"] = macd.get("MACDh_12_26_9")
+        data["atr14"] = ta.atr(data["high"], data["low"], data["close"], length=14)
     else:
-        # Lightweight pandas fallbacks
+        # Lightweight pandas fallbacks for environments without ``pandas_ta``.
         def ema(series: pd.Series, span: int) -> pd.Series:
             return series.ewm(span=span, adjust=False).mean()
 
@@ -36,11 +44,27 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
             rs = up / (down + 1e-12)
             return 100 - (100 / (1 + rs))
 
-        data["ema20"], data["ema50"] = (
-            ema(data.close, 20),
-            ema(data.close, 50),
-        )
+        data["ema20"] = ema(data.close, 20)
+        data["ema50"] = ema(data.close, 50)
+        data["ema99"] = ema(data.close, 99)
+        data["ema200"] = ema(data.close, 200)
         data["rsi14"] = rsi(data.close, 14)
+        ema12 = ema(data.close, 12)
+        ema26 = ema(data.close, 26)
+        data["macd"] = ema12 - ema26
+        data["macd_sig"] = data["macd"].ewm(span=9, adjust=False).mean()
+        data["macd_hist"] = data["macd"] - data["macd_sig"]
+        high = data["high"]
+        low = data["low"]
+        close = data["close"]
+        prev_close = close.shift(1)
+        tr = pd.concat(
+            [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+        data["atr14"] = tr.rolling(window=14).mean()
+
+    data["vol_spike"] = data["volume"] / data["volume"].rolling(window=20).mean()
     return data
 
 
