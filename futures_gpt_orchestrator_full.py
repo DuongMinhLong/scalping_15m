@@ -12,9 +12,10 @@ modules for clarity and maintainability.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
-from threading import Thread
+from pathlib import Path
 from typing import Any, Dict, List
 
 try:  # pragma: no cover - optional dependency
@@ -53,6 +54,8 @@ logging.getLogger().addHandler(file_handler)
 
 logger = logging.getLogger(__name__)
 
+LIMIT_ORDER_DIR = Path("limit_orders")
+
 
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
     """Place stop-loss and three take-profit orders for an entry."""
@@ -74,31 +77,6 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
     exchange.create_order(
         symbol, "limit", exit_side, qty_tp3, tp3, {"reduceOnly": True}
     )
-
-
-def await_entry_fill(exchange, symbol, order_id, side, qty, sl, tp1, tp2, tp3, timeout=120):
-    """Chờ lệnh vào khớp rồi đặt SL/TP tương ứng."""
-    logger.info(
-        "Awaiting fill for %s order %s side=%s qty=%s", symbol, order_id, side, qty
-    )
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            o = exchange.fetch_order(order_id, symbol)
-            status = (o.get("status") or "").lower()
-            if status == "open":
-                time.sleep(2)  # chưa khớp, đợi thêm
-                continue
-            if status != "closed":
-                return  # lệnh bị huỷ hoặc hết hạn
-            _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3)
-            logger.info("Entry filled for %s; SL/TP placed", symbol)
-            return
-        except Exception as e:
-            logger.warning("await_entry_fill fetch_order error: %s", e)
-            time.sleep(2)  # lỗi tạm thời, thử lại
-    logger.info("Timeout waiting for order %s fill", order_id)
-    return
 
 
 def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
@@ -156,22 +134,11 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     coins = enrich_tp_qty(ex, coins, capital)
     logger.info("Model returned %d coin actions", len(coins))
 
-    if coins:
-        limits = {
-            c["pair"]: {
-                "sl": c["sl"],
-                "tp1": c["tp1"],
-                "tp2": c["tp2"],
-                "tp3": c["tp3"],
-            }
-            for c in coins
-        }
-        save_text("gpt_limits.json", dumps_min(limits))  # ghi file để job nền đọc
-
     placed: List[Dict[str, Any]] = []
     if run_live and coins:
         logger.info("Placing %d orders", len(coins))
         pos_pairs_live = get_open_position_pairs(ex)
+        LIMIT_ORDER_DIR.mkdir(exist_ok=True)
         for c in coins:
             pair = (c.get("pair") or "").upper()
             side = c.get("side")
@@ -187,11 +154,22 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
             entry_order = ex.create_order(
                 ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
             )
-            Thread(
-                target=await_entry_fill,
-                args=(ex, ccxt_sym, entry_order.get("id"), side, qty, sl, tp1, tp2, tp3),
-                daemon=True,
-            ).start()
+            save_text(
+                str(LIMIT_ORDER_DIR / f"{pair}.json"),
+                dumps_min(
+                    {
+                        "pair": pair,
+                        "order_id": entry_order.get("id"),
+                        "side": side,
+                        "limit": entry,
+                        "qty": qty,
+                        "sl": sl,
+                        "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
+                    }
+                ),
+            )
             placed.append(
                 {
                     "pair": pair,
@@ -259,6 +237,42 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
+
+
+def add_sl_tp_from_json(exchange):
+    """Đọc các file limit order và đặt SL/TP khi lệnh đã khớp."""
+
+    LIMIT_ORDER_DIR.mkdir(exist_ok=True)
+    for fp in LIMIT_ORDER_DIR.glob("*.json"):
+        try:
+            data = json.loads(fp.read_text())
+        except Exception as e:
+            logger.warning("add_sl_tp_from_json read error %s: %s", fp, e)
+            continue
+        pair = (data.get("pair") or "").upper()
+        order_id = data.get("order_id")
+        side = data.get("side")
+        qty = data.get("qty")
+        sl = data.get("sl")
+        tp1 = data.get("tp1")
+        tp2 = data.get("tp2")
+        tp3 = data.get("tp3")
+        if not (pair and order_id and side and qty and sl and tp1 and tp2 and tp3):
+            continue
+        ccxt_sym = to_ccxt_symbol(pair)
+        try:
+            o = exchange.fetch_order(order_id, ccxt_sym)
+        except Exception as e:
+            logger.warning("add_sl_tp_from_json fetch_order error for %s: %s", pair, e)
+            continue
+        status = (o.get("status") or "").lower()
+        if status != "closed":
+            continue
+        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
+        try:
+            fp.unlink()
+        except Exception as e:
+            logger.warning("add_sl_tp_from_json unlink error %s: %s", fp, e)
 
 
 
@@ -410,12 +424,14 @@ def live_loop(
     run_interval: int = 900,
     sl_interval: int = 300,
     cancel_interval: int = 600,
+    add_interval: int = 60,
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
     The orchestrator job defaults to running every fifteen minutes, the
-    stop-loss check runs every five minutes, and stale limit orders are
-    cancelled every ten minutes. These cadences align with wall-clock time
+    stop-loss check runs every five minutes, stale limit orders are
+    cancelled every ten minutes, and pending limit orders are checked
+    every minute to add SL/TP. These cadences align with wall-clock time
     via cron-based scheduling. The ``*_interval`` arguments are in seconds
     and should be multiples of 60.
     """
@@ -424,11 +440,12 @@ def live_loop(
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s run_interval=%s sl_interval=%s cancel_interval=%s",
+        "Starting live loop limit=%s run_interval=%s sl_interval=%s cancel_interval=%s add_interval=%s",
         limit,
         run_interval,
         sl_interval,
         cancel_interval,
+        add_interval,
     )
 
     ex = make_exchange()
@@ -455,13 +472,22 @@ def live_loop(
         except Exception:
             logger.exception("cancel_job error")
 
+    def limit_job():
+        logger.info("Scheduled SL/TP placement check")
+        try:
+            add_sl_tp_from_json(ex)
+        except Exception:
+            logger.exception("limit_job error")
+
     run_step = max(1, run_interval // 60)
     sl_step = max(1, sl_interval // 60)
     cancel_step = max(1, cancel_interval // 60)
+    limit_step = max(1, add_interval // 60)
 
     scheduler.add_job(run_job, "cron", minute=f"*/{run_step}", second=0)
     scheduler.add_job(sl_job, "cron", minute=f"*/{sl_step}", second=0)
     scheduler.add_job(cancel_job, "cron", minute=f"*/{cancel_step}", second=0)
+    scheduler.add_job(limit_job, "cron", minute=f"*/{limit_step}", second=0)
     logger.info("Scheduler starting")
     scheduler.start()
 
