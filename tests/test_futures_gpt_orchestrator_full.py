@@ -154,3 +154,46 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
     assert ex.cancelled == []
     assert (tmp_path / "BTCUSDT.json").exists()
+
+
+class TP1Exchange:
+    def __init__(self, status, filled, amount=1):
+        self.status = status
+        self.filled = filled
+        self.amount = amount
+        self.cancelled = []
+        self.created = []
+
+    def fetch_order(self, oid, symbol):
+        return {
+            "id": oid,
+            "price": 100,
+            "status": self.status,
+            "filled": self.filled,
+            "amount": self.amount,
+        }
+
+    def cancel_order(self, oid, symbol):
+        self.cancelled.append((oid, symbol))
+
+    def create_order(self, symbol, typ, side, qty, price, params):
+        self.created.append((symbol, typ, side, qty, price, params))
+
+
+def test_handle_tp1_hit_checks_status(monkeypatch):
+    monkeypatch.setattr(orch, "_get_sl_tp_orders", lambda e, s: ([], [], None))
+    tp_orders = [
+        {"id": "1", "price": 100, "amount": 1},
+        {"id": "2", "price": 110, "amount": 1},
+        {"id": "3", "price": 120, "amount": 1},
+    ]
+
+    ex_closed = TP1Exchange("closed", 1)
+    orch._handle_tp1_hit(ex_closed, "BTC/USDT", "buy", 101, [], tp_orders)
+    assert ex_closed.cancelled == [("1", "BTC/USDT")]
+    assert ex_closed.created
+
+    ex_open = TP1Exchange("open", 0.5)
+    orch._handle_tp1_hit(ex_open, "BTC/USDT", "buy", 101, [], tp_orders)
+    assert ex_open.cancelled == []
+    assert ex_open.created == []
