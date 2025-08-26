@@ -354,13 +354,35 @@ def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
         exit_side = "buy"
     if not price_hit:
         return sl_orders, tp_orders
-    qty_tp1 = abs(float(tp1_order.get("amount") or tp1_order.get("remaining") or 0))
+
+    try:
+        tp1_order = exchange.fetch_order(tp1_order.get("id"), symbol)
+    except Exception as e:
+        logger.warning("_handle_tp1_hit fetch_order error: %s", e)
+        return sl_orders, tp_orders
+
+    filled = float(tp1_order.get("filled") or 0)
+    amount = float(tp1_order.get("amount") or 0)
+    status = tp1_order.get("status")
+    price = float(tp1_order.get("price") or 0)
+    logger.info(
+        "TP1 order check %s price=%.8f status=%s filled=%.8f amount=%.8f",
+        symbol,
+        price,
+        status,
+        filled,
+        amount,
+    )
+
+    if status != "closed" and filled < amount:
+        return sl_orders, tp_orders
+
+    qty_tp1 = abs(amount or float(tp1_order.get("remaining") or 0))
     try:
         exchange.cancel_order(tp1_order.get("id"), symbol)
     except Exception as e:
         logger.warning("_handle_tp1_hit cancel_order error: %s", e)
     try:
-        price = float(tp1_order.get("price") or 0)
         exchange.create_order(symbol, "limit", exit_side, qty_tp1, price, {"reduceOnly": True})
     except Exception as e:
         logger.warning("_handle_tp1_hit create_order error: %s", e)
