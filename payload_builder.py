@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Set
 
+import logging
+
 import pandas as pd
 from threading import Lock
 
@@ -16,6 +18,11 @@ from exchange_utils import (
     top_by_24h_change,
 )
 from indicators import add_indicators, trend_lbl
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 
 def session_meta() -> Dict[str, int | str]:
@@ -165,26 +172,73 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
     """Build the full payload used by the orchestrator."""
 
     exclude_pairs = exclude_pairs or set()
+    logger.info("exclude_pairs count: %d", len(exclude_pairs))
     # Prioritize symbols with the largest 24h percentage change
     symbols_raw = top_by_24h_change(exchange, limit * 3)
     symbols: List[str] = []
+    excluded_change = 0
     for s in symbols_raw:
         pair = s.replace("/", "").upper()
         if pair in exclude_pairs:
+            excluded_change += 1
             continue
         symbols.append(s)
         if len(symbols) >= limit:
             break
+    logger.info(
+        "24h change candidates: %d, excluded: %d, selected: %d",
+        len(symbols_raw),
+        excluded_change,
+        len(symbols),
+    )
     if len(symbols) < limit:
         # If not enough, fill the remainder with top quote-volume symbols
         fallback_raw = top_by_qv(exchange, limit * 3)
+        excluded_vol = 0
+        added_vol = 0
         for s in fallback_raw:
             pair = s.replace("/", "").upper()
             if pair in exclude_pairs or s in symbols:
+                if pair in exclude_pairs:
+                    excluded_vol += 1
                 continue
             symbols.append(s)
+            added_vol += 1
             if len(symbols) >= limit:
                 break
+        logger.info(
+            "volume x3 candidates: %d, excluded: %d, added: %d, total: %d",
+            len(fallback_raw),
+            excluded_vol,
+            added_vol,
+            len(symbols),
+        )
+        multiplier = 5
+        while len(symbols) < limit:
+            fallback_raw = top_by_qv(exchange, limit * multiplier)
+            excluded_vol = 0
+            added_vol = 0
+            for s in fallback_raw:
+                pair = s.replace("/", "").upper()
+                if pair in exclude_pairs or s in symbols:
+                    if pair in exclude_pairs:
+                        excluded_vol += 1
+                    continue
+                symbols.append(s)
+                added_vol += 1
+                if len(symbols) >= limit:
+                    break
+            logger.info(
+                "volume x%d candidates: %d, excluded: %d, added: %d, total: %d",
+                multiplier,
+                len(fallback_raw),
+                excluded_vol,
+                added_vol,
+                len(symbols),
+            )
+            if added_vol == 0:
+                break
+            multiplier *= 2
     coins = [coin_payload(exchange, s) for s in symbols]
     return {
         "time": {"now_utc": now_ms(), "session": session_meta()},
