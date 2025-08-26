@@ -17,7 +17,6 @@ from exchange_utils import (
     fetch_ohlcv_df,
     load_usdtm,
     orderbook_snapshot,
-    cache_top_by_qv,
     top_gainers,
     top_by_market_cap,
     funding_snapshot,
@@ -195,16 +194,19 @@ def build_payload(
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    volume_list = cache_top_by_qv(exchange, limit=100)
     gainers = top_gainers(exchange, limit=limit)
     mc_list = top_by_market_cap(max(limit, 30), ttl=mc_ttl)
     mc_bases = set(mc_list)
+    markets = load_usdtm(exchange)
+    base_map: Dict[str, str] = {}
+    for sym, m in markets.items():
+        b = m.get("base") or ""
+        base_map[strip_numeric_prefix(b)] = sym
+
     symbols: List[str] = []
     used_bases: Set[str] = set()
 
     for s in gainers:
-        if s not in volume_list:
-            continue
         pair = norm_pair_symbol(s)
         base = strip_numeric_prefix(pair[:-4])
         if (
@@ -219,41 +221,19 @@ def build_payload(
         if len(symbols) >= limit:
             break
 
-    if len(symbols) < limit:
-        for s in volume_list:
-            if len(symbols) >= limit:
-                break
-            pair = norm_pair_symbol(s)
-            base = strip_numeric_prefix(pair[:-4])
-            if (
-                pair in exclude_pairs
-                or pair in pos_pairs
-                or base not in mc_bases
-                or base in used_bases
-            ):
-                continue
-            symbols.append(s)
-            used_bases.add(base)
-
-    if len(symbols) < limit:
-        markets = load_usdtm(exchange)
-        base_map: Dict[str, str] = {}
-        for sym, m in markets.items():
-            b = m.get("base") or ""
-            base_map[strip_numeric_prefix(b)] = sym
-        for base in mc_list:
-            if len(symbols) >= limit:
-                break
-            if base in used_bases:
-                continue
-            sym = base_map.get(base, f"{base}/USDT:USDT")
-            if sym not in markets:
-                continue
-            pair = norm_pair_symbol(sym)
-            if pair in exclude_pairs or pair in pos_pairs:
-                continue
-            symbols.append(sym)
-            used_bases.add(base)
+    for base in mc_list:
+        if len(symbols) >= limit:
+            break
+        if base in used_bases:
+            continue
+        sym = base_map.get(base)
+        if sym is None:
+            continue
+        pair = norm_pair_symbol(sym)
+        if pair in exclude_pairs or pair in pos_pairs:
+            continue
+        symbols.append(sym)
+        used_bases.add(base)
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:

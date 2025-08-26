@@ -13,7 +13,6 @@ class DummyExchange:
 def test_build_payload_fills_from_market_cap(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
-    monkeypatch.setattr(pb, "cache_top_by_qv", lambda ex, limit=100: ["AAA/USDT:USDT"])
     monkeypatch.setattr(pb, "top_gainers", lambda ex, limit=10: [])
     monkeypatch.setattr(pb, "top_by_market_cap", lambda lim, ttl=3600: ["AAA", "BBB"])
     monkeypatch.setattr(
@@ -35,7 +34,6 @@ def test_build_payload_fills_from_market_cap(monkeypatch):
 def test_build_payload_handles_numeric_prefix(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
-    monkeypatch.setattr(pb, "cache_top_by_qv", lambda ex, limit=100: [])
     monkeypatch.setattr(pb, "top_gainers", lambda ex, limit=10: [])
     monkeypatch.setattr(pb, "top_by_market_cap", lambda lim, ttl=3600: ["PEPE"])
     monkeypatch.setattr(
@@ -56,15 +54,6 @@ def test_build_payload_prioritizes_gainers_and_skips_positions(monkeypatch):
         pb, "positions_snapshot", lambda ex: [{"pair": "BBBUSDT"}]
     )
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
-    monkeypatch.setattr(
-        pb,
-        "cache_top_by_qv",
-        lambda ex, limit=100: [
-            "AAA/USDT:USDT",
-            "BBB/USDT:USDT",
-            "CCC/USDT:USDT",
-        ],
-    )
     monkeypatch.setattr(
         pb,
         "top_gainers",
