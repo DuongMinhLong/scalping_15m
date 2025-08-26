@@ -154,3 +154,54 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
     assert ex.cancelled == []
     assert (tmp_path / "BTCUSDT.json").exists()
+
+
+def test_move_sl_to_entry_skips_after_tp1(monkeypatch, tmp_path):
+    monkeypatch.setattr(orch, "TP1_STATE_FILE", tmp_path / "tp1.json")
+    orch.TP1_HIT_SYMBOLS.clear()
+
+    class Ex:
+        def fetch_positions(self):
+            return ["pos"]
+
+    ex = Ex()
+    monkeypatch.setattr(
+        orch, "_get_position_info", lambda pos: ("BTC/USDT", "buy", 100.0, 1.0)
+    )
+
+    sl_order = {"id": "sl"}
+    tp_orders = [{"id": "tp1"}, {"id": "tp2"}, {"id": "tp3"}]
+
+    monkeypatch.setattr(
+        orch, "_get_sl_tp_orders", lambda exchange, symbol: ([sl_order], tp_orders, 110.0)
+    )
+
+    handle_calls = []
+
+    def fake_handle(exchange, symbol, side, last_price, sl_orders, tp_orders):
+        handle_calls.append(symbol)
+        return sl_orders, tp_orders[1:]
+
+    monkeypatch.setattr(orch, "_handle_tp1_hit", fake_handle)
+
+    updates = []
+
+    def fake_update(exchange, symbol, side, amt_val, entry_price, sl_order_in):
+        updates.append(symbol)
+
+    monkeypatch.setattr(orch, "_update_sl_to_entry", fake_update)
+
+    orch.move_sl_to_entry_if_tp1_hit(ex)
+
+    assert handle_calls == ["BTC/USDT"]
+    assert updates == ["BTC/USDT"]
+    assert json.loads(orch.TP1_STATE_FILE.read_text()) == ["BTC/USDT"]
+
+    tp_orders2 = [{"id": "tpA"}, {"id": "tpB"}, {"id": "tpC"}]
+    monkeypatch.setattr(
+        orch, "_get_sl_tp_orders", lambda exchange, symbol: ([sl_order], tp_orders2, 110.0)
+    )
+
+    orch.move_sl_to_entry_if_tp1_hit(ex)
+    assert handle_calls == ["BTC/USDT"]
+    assert updates == ["BTC/USDT"]

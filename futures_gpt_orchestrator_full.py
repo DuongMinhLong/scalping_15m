@@ -57,6 +57,24 @@ logger = logging.getLogger(__name__)
 # Directory inside ``outputs`` where limit order metadata is stored
 LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
 
+# Track symbols where the first take-profit has already triggered to avoid
+# repeatedly processing the same position. The state is persisted to a
+# temporary file so scheduled jobs in the same process do not remove
+# subsequent take-profit orders erroneously.
+TP1_STATE_FILE = Path("/tmp/tp1_hit_state.json")
+try:
+    TP1_HIT_SYMBOLS = set(json.loads(TP1_STATE_FILE.read_text()))
+except Exception:
+    TP1_HIT_SYMBOLS = set()
+
+
+def _mark_tp1_hit(symbol: str) -> None:
+    TP1_HIT_SYMBOLS.add(symbol)
+    try:
+        TP1_STATE_FILE.write_text(json.dumps(sorted(TP1_HIT_SYMBOLS)))
+    except Exception as e:  # pragma: no cover - best effort persistence
+        logger.warning("save TP1 state error: %s", e)
+
 
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
     """Place stop-loss and three take-profit orders for an entry."""
@@ -420,12 +438,21 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         if info is None:
             continue
         symbol, side, entry_price, amt_val = info
+        if symbol in TP1_HIT_SYMBOLS:
+            continue
         sl_orders, tp_orders, last_price = _get_sl_tp_orders(exchange, symbol)
         if not sl_orders:
             continue
-        sl_orders, tp_orders = _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders)
+        if len(tp_orders) < 3:
+            _mark_tp1_hit(symbol)
+            _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
+            continue
+        sl_orders, tp_orders = _handle_tp1_hit(
+            exchange, symbol, side, last_price, sl_orders, tp_orders
+        )
         if len(tp_orders) >= 3:
             continue
+        _mark_tp1_hit(symbol)
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
 def live_loop(
