@@ -80,7 +80,8 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
     )
 
 
-def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
+# Default limit increased to 30 to expand the number of coins processed
+def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
 
     logger.info("Run start live=%s limit=%s", run_live, limit)
@@ -457,20 +458,20 @@ def move_sl_to_entry_if_tp1_hit(exchange):
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
 def live_loop(
-    limit: int = 20,
-    run_interval: int = 900,
+    limit: int = 30,
+    run_interval: int = 3600,
     sl_interval: int = 300,
     cancel_interval: int = 600,
     add_interval: int = 60,
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
-    The orchestrator job defaults to running every fifteen minutes, the
-    stop-loss check runs every five minutes, stale limit orders are
-    cancelled every ten minutes, and pending limit orders are checked
-    every minute to add SL/TP. These cadences align with wall-clock time
-    via cron-based scheduling. The ``*_interval`` arguments are in seconds
-    and should be multiples of 60.
+    The orchestrator job defaults to running every hour, the stop-loss
+    check runs every five minutes, stale limit orders are cancelled every
+    ten minutes, and pending limit orders are checked every minute to add
+    SL/TP. These cadences align with wall-clock time via cron-based
+    scheduling. The ``*_interval`` arguments are in seconds and should be
+    multiples of 60.
     """
 
     if BlockingScheduler is None:
@@ -533,7 +534,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--live", action="store_true", default=env_bool("LIVE", False))
-    parser.add_argument("--limit", type=int, default=env_int("LIMIT", 20))
+    parser.add_argument("--limit", type=int, default=env_int("LIMIT", 30))
     parser.add_argument("--loop", action="store_true")
     args = parser.parse_args()
     if args.loop:
@@ -543,7 +544,7 @@ if __name__ == "__main__":
     else:
         logger.info(
             dumps_min(
-                run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 20))
+                run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 30))
             )
         )
 
