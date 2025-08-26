@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from typing import Dict, List
 
 import ccxt
@@ -12,6 +13,9 @@ from env_utils import rfloat
 
 # Symbols to skip when building the market universe
 BLACKLIST_BASES = {"BTC", "BNB"}
+
+
+logger = logging.getLogger(__name__)
 
 
 def make_exchange() -> ccxt.Exchange:
@@ -112,4 +116,40 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
         }
     except Exception:
         return {}
+
+
+def liquidation_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 50) -> Dict:
+    """Return basic liquidation statistics or an empty dict if unsupported.
+
+    Binance does not implement ``fetchLiquidations`` in ccxt.  Previously this
+    raised a noisy warning for every symbol.  We guard against that here by
+    checking for support before attempting the call.
+    """
+
+    if not getattr(exchange, "has", {}).get("fetchLiquidations"):
+        return {}
+    try:
+        records = exchange.fetch_liquidations(symbol, limit=limit)
+    except Exception as exc:  # pragma: no cover - network errors
+        logger.warning("liquidation_snapshot error for %s: %s", symbol, exc)
+        return {}
+
+    buy_vol = 0.0
+    sell_vol = 0.0
+    for r in records or []:
+        side = (r.get("side") or "").lower()
+        amount = float(r.get("amount") or 0.0)
+        price = float(r.get("price") or 0.0)
+        vol = amount * price
+        if side == "buy":
+            buy_vol += vol
+        elif side == "sell":
+            sell_vol += vol
+
+    den = (buy_vol + sell_vol) or 1.0
+    return {
+        "buy_vol": rfloat(buy_vol, 6),
+        "sell_vol": rfloat(sell_vol, 6),
+        "imbalance": rfloat((buy_vol - sell_vol) / den, 6),
+    }
 
