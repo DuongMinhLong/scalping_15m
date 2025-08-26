@@ -199,7 +199,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
 
 
 def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
-    """Cancel non-reduceOnly limit orders for pairs without positions once stale (>10m)."""
+    """Cancel stale limit orders for pairs without positions and delete their JSON files."""
 
     logger.info(
         "Checking for stale limit orders older than %s seconds", max_age_sec
@@ -237,6 +237,14 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
             except Exception as e:
                 logger.warning("cancel_unpositioned_limits cancel_order error: %s", e)
                 continue
+            fp = LIMIT_ORDER_DIR / f"{pair}.json"
+            try:
+                if fp.exists():
+                    fp.unlink()
+            except Exception as e:
+                logger.warning(
+                    "cancel_unpositioned_limits unlink error %s: %s", fp, e
+                )
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
