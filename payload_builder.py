@@ -195,7 +195,7 @@ def build_payload(
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
     gainers = top_gainers(exchange, limit=limit)
-    mc_list = top_by_market_cap(max(limit, 30), ttl=mc_ttl)
+    mc_list = top_by_market_cap(max(limit, 200), ttl=mc_ttl)
     mc_bases = set(mc_list)
     markets = load_usdtm(exchange)
     base_map: Dict[str, str] = {}
