@@ -33,37 +33,7 @@ def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_text},
         ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "trade_list",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "coins": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "pair": {"type": "string"},
-                                    "entry": {"type": "number"},
-                                    "sl": {"type": "number"},
-                                    "tp1": {"type": "number"},
-                                    "tp2": {"type": "number"},
-                                    "tp3": {"type": "number"},
-                                    "conf": {"type": "number"},
-                                },
-                                "required": [
-                                    "pair", "entry", "sl", "tp1", "tp2", "tp3", "conf"
-                                ]
-                            }
-                        }
-                    },
-                    "required": ["coins"],
-                    "additionalProperties": False
-                }
-            }
-        }
+        "response_format": {"type": "text"},
     }
     for attempt in range(3):  # thử tối đa 3 lần
         try:
