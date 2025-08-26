@@ -114,3 +114,43 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         ("BTC/USDT", "limit", "sell", 5.0, 1.2, {"reduceOnly": True}),
         ("BTC/USDT", "limit", "sell", 2.0, 1.3, {"reduceOnly": True}),
     ]
+
+
+class StaleExchange:
+    def __init__(self):
+        self.options = {}
+        self.cancelled = []
+
+    def fetch_open_orders(self):
+        return [
+            {
+                "id": "1",
+                "symbol": "BTC/USDT",
+                "type": "limit",
+                "timestamp": 1,
+                "reduceOnly": False,
+            }
+        ]
+
+    def cancel_order(self, oid, symbol):
+        self.cancelled.append((oid, symbol))
+
+
+def test_cancel_unpositioned_limits_clears_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+    ex = StaleExchange()
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    orch.cancel_unpositioned_limits(ex, max_age_sec=0)
+    assert ex.cancelled == [("1", "BTC/USDT")]
+    assert not (tmp_path / "BTCUSDT.json").exists()
+
+
+def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+    ex = StaleExchange()
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"BTCUSDT"})
+    orch.cancel_unpositioned_limits(ex, max_age_sec=0)
+    assert ex.cancelled == []
+    assert (tmp_path / "BTCUSDT.json").exists()
