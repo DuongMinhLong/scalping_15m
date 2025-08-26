@@ -10,7 +10,7 @@ PROMPT_SYS_MINI = (
 )
 
 PROMPT_USER_MINI = (
-    "Dữ liệu đầy đủ dưới đây (không bỏ sót trường nào). Phân tích như trader chuyên nghiệp, dùng mọi phương pháp: price action & mô hình nến (pinbar, engulfing, doji, breakout...), EMA20/50/200, RSI, MACD, ATR, volume spike, đa khung (15m/H1/H4), ETH bias, orderbook. "
+    "Dữ liệu đầy đủ dưới đây (không bỏ sót trường nào). Phân tích như trader chuyên nghiệp, dùng mọi phương pháp: price action & mô hình nến (pinbar, engulfing, doji, breakout...), EMA20/50/200, RSI, MACD, ATR, volume spike, đa khung (1h/H4/D1), ETH bias, orderbook. "
     "Chỉ chọn lệnh khi conf ≥ 7.0 và RR ≥ 1.8. Entry phải là LIMIT và nằm trong ±0.5% so với giá hiện tại, nếu xa hơn thì bỏ. "
     "Chốt lời theo chuẩn R: TP1 = 1R, TP3 = 2.5R (R = |entry - sl|; với long: TP = entry + k*R; với short: TP = entry - k*R). "
     "TP2 = mục tiêu chính gần vùng kháng cự/hỗ trợ mạnh, ưu tiên RR≈2.0 (nếu không có vùng rõ ràng, đặt TP2 = entry + 2.0R cho long hoặc entry - 2.0R cho short). "
