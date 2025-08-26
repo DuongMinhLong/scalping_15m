@@ -429,7 +429,7 @@ def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
 
 
 def move_sl_to_entry_if_tp1_hit(exchange):
-    """Move stop-loss to entry once the first take-profit fills."""
+    """Move stop-loss to entry once price crosses the first take-profit."""
 
     try:
         positions = exchange.fetch_positions()
@@ -443,10 +443,16 @@ def move_sl_to_entry_if_tp1_hit(exchange):
             continue
         symbol, side, entry_price, amt_val = info
         sl_orders, tp_orders, last_price = _get_sl_tp_orders(exchange, symbol)
-        if not sl_orders:
+        if not sl_orders or not tp_orders:
             continue
-        sl_orders, tp_orders = _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders)
-        if len(tp_orders) >= 3:
+        try:
+            tp_prices = [float(o.get("price") or 0) for o in tp_orders]
+        except Exception as e:
+            logger.warning("move_sl_to_entry_if_tp1_hit parse tp price error: %s", e)
+            continue
+        tp1_price = min(tp_prices) if side == "buy" else max(tp_prices)
+        price_hit = last_price > tp1_price if side == "buy" else last_price < tp1_price
+        if not price_hit:
             continue
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 
