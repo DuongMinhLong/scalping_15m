@@ -17,7 +17,8 @@ from exchange_utils import (
     fetch_ohlcv_df,
     load_usdtm,
     orderbook_snapshot,
-    top_by_qv,
+    cache_top_by_qv,
+    top_gainers,
     top_by_market_cap,
     funding_snapshot,
     open_interest_snapshot,
@@ -194,21 +195,46 @@ def build_payload(
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    symbols_raw = top_by_qv(exchange, limit * 2)
+    volume_list = cache_top_by_qv(exchange, limit=100)
+    gainers = top_gainers(exchange, limit=limit)
     mc_list = top_by_market_cap(max(limit, 30), ttl=mc_ttl)
     mc_bases = set(mc_list)
     symbols: List[str] = []
     used_bases: Set[str] = set()
-    for s in symbols_raw:
+
+    for s in gainers:
+        if s not in volume_list:
+            continue
         pair = norm_pair_symbol(s)
-        base = pair[:-4]
-        norm_base = strip_numeric_prefix(base)
-        if pair in exclude_pairs or pair in pos_pairs or norm_base not in mc_bases:
+        base = strip_numeric_prefix(pair[:-4])
+        if (
+            pair in exclude_pairs
+            or pair in pos_pairs
+            or base not in mc_bases
+            or base in used_bases
+        ):
             continue
         symbols.append(s)
-        used_bases.add(norm_base)
+        used_bases.add(base)
         if len(symbols) >= limit:
             break
+
+    if len(symbols) < limit:
+        for s in volume_list:
+            if len(symbols) >= limit:
+                break
+            pair = norm_pair_symbol(s)
+            base = strip_numeric_prefix(pair[:-4])
+            if (
+                pair in exclude_pairs
+                or pair in pos_pairs
+                or base not in mc_bases
+                or base in used_bases
+            ):
+                continue
+            symbols.append(s)
+            used_bases.add(base)
+
     if len(symbols) < limit:
         markets = load_usdtm(exchange)
         base_map: Dict[str, str] = {}

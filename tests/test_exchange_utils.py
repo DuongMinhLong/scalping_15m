@@ -4,6 +4,7 @@ import sys
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 import exchange_utils  # noqa: E402
 import requests  # noqa: E402
+import json
 
 
 class DummyResponse:
@@ -98,3 +99,39 @@ def test_liquidation_snapshot_unsupported_exchange(caplog):
         res = exchange_utils.liquidation_snapshot(ex, "ETH/USDT:USDT")
     assert res == {}
     assert "liquidation_snapshot error" not in caplog.text
+
+
+def test_cache_top_by_qv_caches_results(monkeypatch, tmp_path):
+    class DummyExchange:
+        def load_markets(self):
+            return {
+                "AAA/USDT:USDT": {
+                    "symbol": "AAA/USDT:USDT",
+                    "linear": True,
+                    "swap": True,
+                    "quote": "USDT",
+                    "active": True,
+                    "base": "AAA",
+                }
+            }
+
+        def fetch_tickers(self):
+            calls[0] += 1
+            return {"AAA/USDT:USDT": {"quoteVolume": 100}}
+
+    calls = [0]
+    path = tmp_path / "top.json"
+    ex = DummyExchange()
+
+    res1 = exchange_utils.cache_top_by_qv(ex, limit=1, ttl=3600, path=str(path))
+    res2 = exchange_utils.cache_top_by_qv(ex, limit=1, ttl=3600, path=str(path))
+    res3 = exchange_utils.cache_top_by_qv(ex, limit=1, ttl=0, path=str(path))
+
+    assert res1 == ["AAA/USDT:USDT"]
+    assert res2 == ["AAA/USDT:USDT"]
+    assert res3 == ["AAA/USDT:USDT"]
+    assert calls[0] == 2
+
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    assert data[0]["base"] == "AAA"
