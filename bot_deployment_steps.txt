@@ -1,0 +1,148 @@
+# =============================
+# 🧠 HƯỚNG DẪN TRIỂN KHAI & QUẢN LÝ BOT BINANCE
+# =============================
+
+# 1. STOP BOT (nếu đang chạy)
+./stop_bot.sh
+
+# 2. UPLOAD BOT MỚI TỪ MÁY LOCAL (trên Git Bash Windows)
+
+#dual 
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Downloads/scalping_15m/scalping_15m_deploy.zip" ubuntu@47.130.82.78:~
+
+chmod +x deploy_full_dual.sh
+./deploy_full_dual.sh
+
+
+pkill -f dual_v2.py || true
+
+source venv/bin/activate
+echo "🏃 Running bot_main.py in background with nohup ..."
+nohup python3 dual_v2.py > bot.log 2>&1 &
+
+------------------------------------------------------------------
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading.zip" ubuntu@47.130.82.78:~
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/deploy.sh" ubuntu@47.130.82.78:~/Finally_trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/requirements.txt" ubuntu@47.130.82.78:~/Finally_trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/bot_main.py" ubuntu@47.130.82.78:~/Finally_trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/call_check_position.py" ubuntu@47.130.82.78:~/Finally_trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/binance_api/future_api.py" ubuntu@47.130.82.78:~/Finally_trading/binance_api/future_api.py
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/trend_helper.py" ubuntu@47.130.82.78:~/Finally_trading/function_helper/trend_helper.py
+
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/cache_helper/cache_sport_helper.py" ubuntu@47.130.82.78:~/Finally_trading/cache_helper/cache_sport_helper.py
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/enter_trade.py" ubuntu@47.130.82.78:~/Finally_trading/function_helper/enter_trade.py
+
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/function_helper.py" ubuntu@47.130.82.78:~/Finally_trading/function_helper
+
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/WIFUSDT.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/ZKUSDT.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
+
+
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/function_helper.py" ubuntu@47.130.82.78:~/Finally_trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/enter_trade.py" ubuntu@47.130.82.78:~/Finally_trading
+------------------------------------------------
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/shared_config.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/named_logger.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/bot_main.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/call_api.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/call_logic_enter_trade.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/call_check_position.py" ubuntu@47.130.82.78:~/bot-trading
+
+
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/my_candlestick.py" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/deploy_full_bot.sh" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/.env" ubuntu@47.130.82.78:~/bot-trading
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/requirements.txt" ubuntu@47.130.82.78:~/bot-trading
+
+chmod +x deploy_full_bot.sh
+./deploy_full_bot.sh
+
+chmod +x deploy_full_dual.sh
+./deploy_full_dual.sh
+
+# 3. SSH VÀO EC2
+ssh -i /home/duongminhlong/Downloads/bot-trading.pem ubuntu@47.130.82.78
+ps aux | grep bot_main.py
+ps aux | grep call_check_position.py
+pkill -f bot_main.py || true
+pkill -f call_check_position.py || true
+# 4. GIẢI NÉN ZIP (nếu không dùng script tự động)
+unzip -o scalping_15m_deploy -d ~/scalping_15m_deploy
+
+# add permission
+    chmod +x deploy.sh
+    ./deploy.sh
+
+# 5. CÀI THÊM LIB (nếu cần)
+cd ~/finally-live/finally-live
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 6. CHẠY BOT NỀN BẰNG SCREEN
+./run_bot.sh
+
+# 7. XEM LOG REALTIME
+tail -f call_check_position.log
+
+# 8. STOP BOT (bằng script)
+./stop_bot.sh
+
+# 9. CẬP NHẬT BOT & KHỞI ĐỘNG LẠI TỰ ĐỘNG
+./update_and_restart.sh
+
+# 10. KIỂM TRA BOT ĐANG CHẠY
+screen -ls
+screen -r bot      # quay lại bot
+
+Downfile log 
+scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/WIFUSDT.json "/home/duongminhlong/Finally_trading/logs"
+scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/ZKUSDT.json "/home/duongminhlong/Finally_trading/logs"
+scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/logs/*.log "/home/duongminhlong/Finally_trading/logs"
+
+scp  -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/bot*.log "/home/duongminhlong/scaping_trading/"
+scp  -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/bot-tradding/gpt_logs/* "D:\logger"
+scp  -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/all-coin/all-coin/log_*.txt "D:\logger"
+scp  -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/bot-tradding.zip "D:\"
+
+
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+
+# 7. Chạy bot
+source venv/bin/activate
+echo "🏃 Running bot_main.py in background with nohup ..."
+nohup python3 bot_main.py > bot.log 2>&1 &
+
+source venv/bin/activate
+pkill -f call_check_position.py || true
+echo "🏃 Running call_check_position.py in background with nohup ..."
+nohup python3 call_check_position.py > bot.log 2>&1 &
+
+
+-----------------------
+✅ Cách 1: Cài MongoDB qua Docker (gọn, không lỗi thư viện)
+Cài Docker nếu chưa có:
+
+sudo apt install docker.io -y
+
+Chạy MongoDB qua Docker:
+
+docker run -d --name mongodb \
+  -p 27017:27017 \
+  -v mongodata:/data/db \
+  mongo:6
+
+
+
+  zip -r /home/duongminhlong/Finally_trading.zip . \
+    -x "venv/*" "**/__pycache__/*" "*.pyc" \
+    ".git/*" ".vscode/*" "*.DS_Store" "*.ipynb_checkpoints/*"
+
+    zip -r /home/duongminhlong/Finally_trading.zip . \
+  -x "venv/*" "**/__pycache__/*" "*.pyc" \
+     ".git/*" ".vscode/*" "*.DS_Store" "*.ipynb_checkpoints/*" \
+     "active_orders/*" "logs/*"
+

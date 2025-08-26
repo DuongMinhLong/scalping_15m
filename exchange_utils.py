@@ -30,7 +30,7 @@ STABLE_BASES = {
 }
 
 # Symbols to skip when building the market universe
-BLACKLIST_BASES = {"BTC", "BNB"} | STABLE_BASES
+BLACKLIST_BASES = {"BTC", "BNB", "ETH"} | STABLE_BASES
 
 
 # Cache for CoinGecko market cap results
