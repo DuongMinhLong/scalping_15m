@@ -12,15 +12,19 @@ from typing import Dict, List, Set
 
 import pandas as pd
 
-from env_utils import compact, compact_price, drop_empty, rfloat, rprice
+from env_utils import compact, compact_price, drop_empty, human_num, rfloat, rprice
 from exchange_utils import (
     fetch_ohlcv_df,
     load_usdtm,
     orderbook_snapshot,
     top_by_qv,
     top_by_market_cap,
+    funding_snapshot,
+    open_interest_snapshot,
+    cvd_snapshot,
+    liquidation_snapshot,
 )
-from indicators import add_indicators, trend_lbl
+from indicators import add_indicators, trend_lbl, detect_sr_levels
 from positions import positions_snapshot
 
 logger = logging.getLogger(__name__)
@@ -99,19 +103,7 @@ def strip_numeric_prefix(base: str) -> str:
 
 
 def build_1h(df: pd.DataFrame, limit: int = 20, nd: int = 5) -> Dict:
-    """Build the detailed 1h payload with indicators and OHLCV.
-
-    Parameters
-    ----------
-    df:
-        DataFrame containing at least OHLCV columns.
-    limit:
-        Number of rows to include from the end of ``df``.  When ``limit`` is
-        ``1`` or below, a lightweight snapshot from :func:`build_snap` is
-        returned instead of arrays.
-    nd:
-        Precision passed to :func:`compact` for rounding floating point values.
-    """
+    """Build the detailed 1h payload with indicators and OHLCV."""
 
     data = add_indicators(df)
     if limit <= 1:
@@ -121,15 +113,31 @@ def build_1h(df: pd.DataFrame, limit: int = 20, nd: int = 5) -> Dict:
 
     tail = data.tail(limit)
     ohlcv = [
-        compact_price([r.open, r.high, r.low, r.close]) + [int(r.volume)]
+        compact([r.open, r.high, r.low, r.close], nd) + [human_num(r.volume)]
         for _, r in tail.iterrows()
     ]
-    ind = {
-        "ema20": compact_price(data["ema20"].tail(limit).tolist()),
-        "ema50": compact_price(data["ema50"].tail(limit).tolist()),
-        "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
+    swing_high = rfloat(data["high"].tail(limit).max(), nd)
+    swing_low = rfloat(data["low"].tail(limit).min(), nd)
+    key = {
+        "prev_close": rfloat(data.close.iloc[-2], nd) if len(data) >= 2 else None,
+        "last_close": rfloat(data.close.iloc[-1], nd),
+        "swing_high": swing_high,
+        "swing_low": swing_low,
     }
-    return {"o": ohlcv, "i": ind}
+    sr_levels = [rfloat(lvl, nd) for lvl in detect_sr_levels(data, lookback=5)]
+    ind = {
+        "ema20": compact(data["ema20"].tail(limit).tolist(), nd),
+        "ema50": compact(data["ema50"].tail(limit).tolist(), nd),
+        "ema99": compact(data["ema99"].tail(limit).tolist(), nd),
+        "ema200": compact(data["ema200"].tail(limit).tolist(), nd),
+        "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
+        "macd": compact(data["macd"].tail(limit).tolist(), nd),
+        "macd_sig": compact(data["macd_sig"].tail(limit).tolist(), nd),
+        "macd_hist": compact(data["macd_hist"].tail(limit).tolist(), nd),
+        "atr14": compact(data["atr14"].tail(limit).tolist(), nd),
+        "vol_spike": compact(data["vol_spike"].tail(limit).tolist(), nd),
+    }
+    return {"ohlcv": ohlcv, "ind": ind, "key": key, "sr_levels": sr_levels}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:
@@ -162,11 +170,15 @@ def coin_payload(exchange, symbol: str) -> Dict:
                 CACHE_H1[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         h1 = CACHE_H1[symbol]
     payload = {
-        "p": norm_pair_symbol(symbol),
+        "pair": norm_pair_symbol(symbol),
         "h1": build_1h(h1),
         "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
         "d1": _snap_with_cache(exchange, symbol, "1d", CACHE_D1, LOCK_D1),
-        "ob": orderbook_snapshot(exchange, symbol),
+        "funding": funding_snapshot(exchange, symbol),
+        "oi": open_interest_snapshot(exchange, symbol),
+        "cvd": cvd_snapshot(exchange, symbol),
+        "liquidation": liquidation_snapshot(exchange, symbol),
+        "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
 
