@@ -85,10 +85,18 @@ def dumps_min(obj: Any) -> str:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
 
 
-def save_text(path: str, text: str) -> None:
-    """Persist text to ``path`` using UTF-8 encoding."""
+def save_text(path: str, text: str, folder: str = "outputs") -> None:
+    """
+    Persist text to ``folder/path`` using UTF-8 encoding.
+    Tự tạo folder nếu chưa tồn tại.
+    """
+    # Tạo đối tượng Path trỏ đến folder + filename
+    folder_path = Path(folder)
+    folder_path.mkdir(parents=True, exist_ok=True)  # đảm bảo folder tồn tại
 
-    Path(path).write_text(text, encoding="utf-8")
+    file_path = folder_path / path
+    file_path.write_text(text, encoding="utf-8")
+
 
 
 def rfloat(value: Any, nd: int = 6) -> float | None:
