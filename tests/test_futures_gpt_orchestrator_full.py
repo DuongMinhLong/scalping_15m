@@ -23,6 +23,11 @@ class CaptureExchange:
         self.orders.append((symbol, typ, side, qty, price, params))
 
 
+class FilledExchange(CaptureExchange):
+    def fetch_order(self, order_id, symbol):
+        return {"status": "closed"}
+
+
 def test_run_sends_coins_only(monkeypatch):
     monkeypatch.setattr(orch, "load_env", lambda: None)
     monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
@@ -83,4 +88,29 @@ def test_place_sl_tp(side, exit_side):
         ("BTC/USDT", "limit", exit_side, 3.0, 2, {"reduceOnly": True}),
         ("BTC/USDT", "limit", exit_side, 5.0, 3, {"reduceOnly": True}),
         ("BTC/USDT", "limit", exit_side, 2.0, 4, {"reduceOnly": True}),
+    ]
+
+
+def test_add_sl_tp_from_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    data = {
+        "pair": "BTCUSDT",
+        "order_id": "1",
+        "side": "buy",
+        "limit": 1,
+        "qty": 10,
+        "sl": 0.9,
+        "tp1": 1.1,
+        "tp2": 1.2,
+        "tp3": 1.3,
+    }
+    (tmp_path / "BTCUSDT.json").write_text(json.dumps(data))
+    ex = FilledExchange()
+    orch.add_sl_tp_from_json(ex)
+    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert ex.orders == [
+        ("BTC/USDT", "limit", "sell", 10, 0.9, {"stopPrice": 0.9, "reduceOnly": True}),
+        ("BTC/USDT", "limit", "sell", 3.0, 1.1, {"reduceOnly": True}),
+        ("BTC/USDT", "limit", "sell", 5.0, 1.2, {"reduceOnly": True}),
+        ("BTC/USDT", "limit", "sell", 2.0, 1.3, {"reduceOnly": True}),
     ]
