@@ -86,15 +86,13 @@ def dumps_min(obj: Any) -> str:
 
 
 def save_text(path: str, text: str, folder: str = "outputs") -> None:
-    """
-    Persist text to ``folder/path`` using UTF-8 encoding.
-    Tự tạo folder nếu chưa tồn tại.
-    """
-    # Tạo đối tượng Path trỏ đến folder + filename
-    folder_path = Path(folder)
-    folder_path.mkdir(parents=True, exist_ok=True)  # đảm bảo folder tồn tại
+    """Persist ``text`` to ``folder/path`` using UTF-8 encoding.
 
-    file_path = folder_path / path
+    Any missing parent directories are created automatically, allowing
+    ``path`` to include nested folders (e.g. ``"limit_orders/foo.json"``).
+    """
+    file_path = Path(folder) / path
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(text, encoding="utf-8")
 
 

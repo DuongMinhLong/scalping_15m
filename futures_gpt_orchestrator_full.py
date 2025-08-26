@@ -54,7 +54,8 @@ logging.getLogger().addHandler(file_handler)
 
 logger = logging.getLogger(__name__)
 
-LIMIT_ORDER_DIR = Path("limit_orders")
+# Directory inside ``outputs`` where limit order metadata is stored
+LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
 
 
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
@@ -140,7 +141,6 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
     if run_live and coins:
         logger.info("Placing %d orders", len(coins))
         pos_pairs_live = get_open_position_pairs(ex)
-        LIMIT_ORDER_DIR.mkdir(exist_ok=True)
         for c in coins:
             pair = (c.get("pair") or "").upper()
             side = c.get("side")
@@ -157,7 +157,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
                 ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
             )
             save_text(
-                str(LIMIT_ORDER_DIR / f"{pair}.json"),
+                f"{pair}.json",
                 dumps_min(
                     {
                         "pair": pair,
@@ -171,6 +171,7 @@ def run(run_live: bool = False, limit: int = 10, ex=None) -> Dict[str, Any]:
                         "tp3": tp3,
                     }
                 ),
+                folder=str(LIMIT_ORDER_DIR),
             )
             placed.append(
                 {
@@ -243,8 +244,6 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
 
 def add_sl_tp_from_json(exchange):
     """Đọc các file limit order và đặt SL/TP khi lệnh đã khớp."""
-
-    LIMIT_ORDER_DIR.mkdir(exist_ok=True)
     for fp in LIMIT_ORDER_DIR.glob("*.json"):
         try:
             data = json.loads(fp.read_text())
