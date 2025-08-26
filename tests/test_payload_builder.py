@@ -5,7 +5,7 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 import payload_builder  # noqa: E402
 
 
-def test_build_15m_adds_volume(monkeypatch):
+def test_build_1h_adds_volume(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
@@ -23,14 +23,14 @@ def test_build_15m_adds_volume(monkeypatch):
             "close": [1.05, 2.05],
             "volume": [100.0, 200.0],
         },
-        index=pd.date_range("2024-01-01", periods=2, freq="15T"),
+        index=pd.date_range("2024-01-01", periods=2, freq="1h"),
     )
 
-    res = payload_builder.build_15m(df)
+    res = payload_builder.build_1h(df)
     assert all(len(candle) == 5 for candle in res["o"])
 
 
-def test_build_15m_volume_numeric(monkeypatch):
+def test_build_1h_volume_numeric(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
@@ -48,14 +48,14 @@ def test_build_15m_volume_numeric(monkeypatch):
             "close": [1.05, 2.05],
             "volume": [100.0, 312066130.0],
         },
-        index=pd.date_range("2024-01-01", periods=2, freq="15T"),
+        index=pd.date_range("2024-01-01", periods=2, freq="1h"),
     )
 
-    res = payload_builder.build_15m(df)
+    res = payload_builder.build_1h(df)
     assert res["o"][-1][-1] == 312066130
 
 
-def test_build_15m_limits_length_and_snap(monkeypatch):
+def test_build_1h_limits_length_and_snap(monkeypatch):
     import pandas as pd
 
     def fake_add_indicators(df):
@@ -74,15 +74,15 @@ def test_build_15m_limits_length_and_snap(monkeypatch):
             "close": range(25),
             "volume": range(25),
         },
-        index=pd.date_range("2024-01-01", periods=25, freq="15T"),
+        index=pd.date_range("2024-01-01", periods=25, freq="1h"),
     )
 
-    res = payload_builder.build_15m(df)
+    res = payload_builder.build_1h(df)
     assert len(res["o"]) == 20
     assert all(len(v) == 20 for v in res["i"].values())
     assert set(res["i"].keys()) == {"ema20", "ema50", "rsi14"}
 
-    snap = payload_builder.build_15m(df, limit=1)
+    snap = payload_builder.build_1h(df, limit=1)
     expected = payload_builder.build_snap(df)
     assert snap == expected
 
@@ -110,7 +110,7 @@ def test_build_snap_rounds_price(monkeypatch):
             "close": [1.05],
             "volume": [100.0],
         },
-        index=pd.date_range("2024-01-01", periods=1, freq="15T"),
+        index=pd.date_range("2024-01-01", periods=1, freq="1h"),
     )
 
     snap = payload_builder.build_snap(df)
@@ -120,9 +120,9 @@ def test_build_snap_rounds_price(monkeypatch):
 def test_coin_payload_includes_higher_timeframes(monkeypatch):
     import pandas as pd
 
-    payload_builder.CACHE_M15.clear()
     payload_builder.CACHE_H1.clear()
     payload_builder.CACHE_H4.clear()
+    payload_builder.CACHE_D1.clear()
 
     def fake_fetch(exchange, symbol, timeframe, limit, since=None):
         return pd.DataFrame(
@@ -133,7 +133,7 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
                 "close": [1.0],
                 "volume": [1.0],
             },
-            index=pd.date_range("2024-01-01", periods=1, freq="1H", tz="UTC"),
+            index=pd.date_range("2024-01-01", periods=1, freq="1h", tz="UTC"),
         )
 
     def fake_add_indicators(df):
@@ -147,7 +147,7 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym: {"sp": 0.1})
 
     res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
-    assert "h1" in res and "h4" in res and res["ob"]["sp"] == 0.1
+    assert "h1" in res and "h4" in res and "d1" in res and res["ob"]["sp"] == 0.1
 
 
 def test_time_payload_sessions():
