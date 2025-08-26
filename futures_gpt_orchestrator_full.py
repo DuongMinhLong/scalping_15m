@@ -452,7 +452,7 @@ def move_sl_to_entry_if_tp1_hit(exchange):
             logger.warning("move_sl_to_entry_if_tp1_hit parse tp price error: %s", e)
             continue
         tp1_price = min(tp_prices) if side == "buy" else max(tp_prices)
-        price_hit = last_price > tp1_price if side == "buy" else last_price < tp1_price
+        price_hit = last_price >= tp1_price if side == "buy" else last_price <= tp1_price
         if not price_hit:
             continue
         _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])

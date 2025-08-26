@@ -197,3 +197,31 @@ def test_handle_tp1_hit_checks_status(monkeypatch):
     orch._handle_tp1_hit(ex_open, "BTC/USDT", "buy", 101, [], tp_orders)
     assert ex_open.cancelled == []
     assert ex_open.created == []
+
+
+def test_move_sl_triggers_on_equal_tp1(monkeypatch):
+    pos = {"symbol": "BTC/USDT", "side": "buy", "contracts": 1, "entryPrice": 100}
+
+    class Ex:
+        def fetch_positions(self):
+            return [pos]
+
+    ex = Ex()
+
+    sl_order = {"id": "sl", "price": 95}
+    tp_order = {"id": "tp1", "price": 105}
+
+    monkeypatch.setattr(
+        orch, "_get_sl_tp_orders", lambda e, s: ([sl_order], [tp_order], 105.0)
+    )
+
+    called = {}
+
+    def fake_update(exchange, symbol, side, amt_val, entry_price, sl):
+        called["called"] = (symbol, side, amt_val, entry_price, sl)
+
+    monkeypatch.setattr(orch, "_update_sl_to_entry", fake_update)
+
+    orch.move_sl_to_entry_if_tp1_hit(ex)
+
+    assert "called" in called
