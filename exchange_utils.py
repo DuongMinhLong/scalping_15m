@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import Dict, List
@@ -84,6 +85,96 @@ def top_by_qv(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
     except Exception as e:
         logger.warning("top_by_qv error: %s", e)
         return symbols[:limit]
+
+
+def cache_top_by_qv(
+    exchange: ccxt.Exchange,
+    limit: int = 100,
+    *,
+    ttl: float = 3600,
+    path: str = "cache/top_volume.json",
+) -> List[str]:
+    """Return top symbols by quote volume using a JSON cache.
+
+    The cache stores a list of objects containing the original ``symbol`` and a
+    normalised ``base`` (numeric prefixes removed) so that tokens like
+    ``1000PEPE`` are not duplicated when refreshed.
+    """
+
+    try:
+        if os.path.exists(path) and time.time() - os.path.getmtime(path) < ttl:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh) or []
+            return [item.get("symbol") for item in data][:limit]
+    except Exception as e:  # pragma: no cover - IO failures
+        logger.warning("cache_top_by_qv read error: %s", e)
+
+    markets = load_usdtm(exchange)
+    try:
+        tickers = exchange.fetch_tickers()
+    except Exception as e:  # pragma: no cover - network failures
+        logger.warning("cache_top_by_qv fetch error: %s", e)
+        return list(markets.keys())[:limit]
+
+    try:
+        from payload_builder import strip_numeric_prefix
+    except Exception:  # pragma: no cover - circular import
+        def strip_numeric_prefix(s: str) -> str:
+            return s
+
+    scored: Dict[str, Dict] = {}
+    for sym, m in markets.items():
+        qv = (tickers.get(sym) or {}).get("quoteVolume") or 0
+        base = m.get("base") or ""
+        norm = strip_numeric_prefix(base)
+        info = scored.get(norm)
+        if not info or float(qv) > info["qv"]:
+            scored[norm] = {"symbol": sym, "qv": float(qv), "base": norm}
+
+    top = sorted(scored.values(), key=lambda x: x["qv"], reverse=True)[:limit]
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(top, fh)
+    except Exception as e:  # pragma: no cover - IO failures
+        logger.warning("cache_top_by_qv write error: %s", e)
+
+    return [item["symbol"] for item in top]
+
+
+def top_gainers(exchange: ccxt.Exchange, limit: int = 20) -> List[str]:
+    """Return symbols sorted by 24h percentage change."""
+
+    markets = load_usdtm(exchange)
+    try:
+        tickers = exchange.fetch_tickers()
+    except Exception as e:  # pragma: no cover - network failures
+        logger.warning("top_gainers error: %s", e)
+        return []
+
+    try:
+        from payload_builder import strip_numeric_prefix
+    except Exception:  # pragma: no cover - circular import
+        def strip_numeric_prefix(s: str) -> str:
+            return s
+
+    scored = []
+    for sym, m in markets.items():
+        pct = (tickers.get(sym) or {}).get("percentage")
+        if pct is None:
+            pct = (tickers.get(sym) or {}).get("info", {}).get("priceChangePercent")
+        try:
+            pct_val = float(pct)
+        except Exception:
+            continue
+        base = strip_numeric_prefix(m.get("base") or "")
+        if base in BLACKLIST_BASES:
+            continue
+        scored.append((sym, pct_val))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [s for s, _ in scored[:limit]]
 
 
 def top_by_market_cap(limit: int = 30, *, ttl: float = 3600) -> List[str]:
