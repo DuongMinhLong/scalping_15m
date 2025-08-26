@@ -56,6 +56,8 @@ logger = logging.getLogger(__name__)
 
 # Directory inside ``outputs`` where limit order metadata is stored
 LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
+# Directory to keep details of active positions after SL/TP orders are placed
+ACTIVE_ORDER_DIR = Path("outputs") / "active_orders"
 
 
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
@@ -280,9 +282,10 @@ def add_sl_tp_from_json(exchange):
             continue
         _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
         try:
-            fp.unlink()
+            ACTIVE_ORDER_DIR.mkdir(parents=True, exist_ok=True)
+            fp.replace(ACTIVE_ORDER_DIR / fp.name)
         except Exception as e:
-            logger.warning("add_sl_tp_from_json unlink error %s: %s", fp, e)
+            logger.warning("add_sl_tp_from_json move error %s: %s", fp, e)
 
 
 

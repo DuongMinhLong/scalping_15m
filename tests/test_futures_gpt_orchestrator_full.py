@@ -92,7 +92,11 @@ def test_place_sl_tp(side, exit_side):
 
 
 def test_add_sl_tp_from_json(tmp_path, monkeypatch):
-    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    limit_dir = tmp_path / "limit"
+    active_dir = tmp_path / "active"
+    limit_dir.mkdir()
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", limit_dir)
+    monkeypatch.setattr(orch, "ACTIVE_ORDER_DIR", active_dir)
     data = {
         "pair": "BTCUSDT",
         "order_id": "1",
@@ -104,10 +108,11 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         "tp2": 1.2,
         "tp3": 1.3,
     }
-    (tmp_path / "BTCUSDT.json").write_text(json.dumps(data))
+    (limit_dir / "BTCUSDT.json").write_text(json.dumps(data))
     ex = FilledExchange()
     orch.add_sl_tp_from_json(ex)
-    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert not (limit_dir / "BTCUSDT.json").exists()
+    assert (active_dir / "BTCUSDT.json").exists()
     assert ex.orders == [
         ("BTC/USDT", "limit", "sell", 10, 0.9, {"stopPrice": 0.9, "reduceOnly": True}),
         ("BTC/USDT", "limit", "sell", 3.0, 1.1, {"reduceOnly": True}),
