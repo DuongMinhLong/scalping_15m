@@ -36,7 +36,7 @@ from env_utils import (
 from exchange_utils import make_exchange
 from openai_client import extract_content, send_openai
 from payload_builder import build_payload
-from positions import _norm_pair_from_symbol, get_open_position_pairs
+from positions import _norm_pair_from_symbol, get_open_position_pairs, positions_snapshot
 from prompts import build_prompts_mini
 from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
@@ -56,8 +56,6 @@ logger = logging.getLogger(__name__)
 
 # Directory inside ``outputs`` where limit order metadata is stored
 LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
-# Directory to keep details of active positions after SL/TP orders are placed
-ACTIVE_ORDER_DIR = Path("outputs") / "active_orders"
 
 
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
@@ -276,10 +274,9 @@ def add_sl_tp_from_json(exchange):
             continue
         _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1)
         try:
-            ACTIVE_ORDER_DIR.mkdir(parents=True, exist_ok=True)
-            fp.replace(ACTIVE_ORDER_DIR / fp.name)
+            fp.unlink()
         except Exception as e:
-            logger.warning("add_sl_tp_from_json move error %s: %s", fp, e)
+            logger.warning("add_sl_tp_from_json unlink error %s: %s", fp, e)
 
 
 
@@ -307,8 +304,89 @@ def _get_position_info(pos):
     return symbol, side, entry_price, amt_val
 
 
-
-
+def move_sl_to_entry(exchange):
+    """Shift stop-loss to entry price once price moves 1R in favor."""
+    positions = positions_snapshot(exchange)
+    for pos in positions:
+        pair = pos.get("pair")
+        side = pos.get("side")
+        entry = pos.get("entry")
+        sl = pos.get("sl")
+        if not (pair and side and entry and sl):
+            continue
+        risk = entry - sl if side == "buy" else sl - entry
+        if risk <= 0:
+            continue
+        symbol = to_ccxt_symbol(pair)
+        try:
+            ticker = exchange.fetch_ticker(symbol)
+            price = float(ticker.get("last") or ticker.get("close"))
+        except Exception as e:
+            logger.warning("move_sl_to_entry fetch_ticker error for %s: %s", pair, e)
+            continue
+        moved = (
+            price - entry >= risk if side == "buy" else entry - price >= risk
+        )
+        if not moved:
+            continue
+        try:
+            orders = exchange.fetch_open_orders(symbol)
+        except Exception as e:
+            logger.warning(
+                "move_sl_to_entry fetch_open_orders error for %s: %s", pair, e
+            )
+            continue
+        stop_orders = [
+            o
+            for o in orders
+            if o.get("reduceOnly")
+            and (
+                o.get("stopPrice")
+                or (o.get("info") or {}).get("stopPrice")
+                or o.get("price")
+            )
+        ]
+        if not stop_orders:
+            continue
+        try:
+            priced = [
+                (
+                    o,
+                    float(
+                        o.get("stopPrice")
+                        or (o.get("info") or {}).get("stopPrice")
+                        or o.get("price")
+                        or 0
+                    ),
+                )
+                for o in stop_orders
+            ]
+        except Exception as e:
+            logger.warning("move_sl_to_entry price parse error for %s: %s", pair, e)
+            continue
+        sl_order = (
+            min(priced, key=lambda x: x[1])
+            if side == "buy"
+            else max(priced, key=lambda x: x[1])
+        )
+        sl_order_id = sl_order[0].get("id")
+        if sl_order_id:
+            try:
+                exchange.cancel_order(sl_order_id, symbol)
+            except Exception as e:
+                logger.warning("move_sl_to_entry cancel error for %s: %s", pair, e)
+        exit_side = "sell" if side == "buy" else "buy"
+        try:
+            exchange.create_order(
+                symbol,
+                "market",
+                exit_side,
+                None,
+                None,
+                {"reduceOnly": True, "closePosition": True, "stopPrice": entry},
+            )
+        except Exception as e:
+            logger.warning("move_sl_to_entry create_order error for %s: %s", pair, e)
 
 
 def live_loop(
@@ -316,6 +394,7 @@ def live_loop(
     run_interval: int = 900,      # orchestrator job (15m)
     cancel_interval: int = 600,   # cancel stale orders (10m)
     add_interval: int = 60,       # SL/TP add (1m)
+    move_sl_interval: int = 300,  # move SL to entry (5m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
@@ -328,11 +407,12 @@ def live_loop(
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s run_interval=%s cancel_interval=%s add_interval=%s",
+        "Starting live loop limit=%s run_interval=%s cancel_interval=%s add_interval=%s move_sl_interval=%s",
         limit,
         run_interval,
         cancel_interval,
         add_interval,
+        move_sl_interval,
     )
 
     ex = make_exchange()
@@ -359,11 +439,19 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
 
+    def move_sl_job():
+        logger.info("Scheduled move SL to entry check")
+        try:
+            move_sl_to_entry(ex)
+        except Exception:
+            logger.exception("move_sl_job error")
+
     scheduler.add_job(run_job, "interval", seconds=run_interval)
 
     # Các job còn lại chạy theo interval
     scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
+    scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
     scheduler.start()
