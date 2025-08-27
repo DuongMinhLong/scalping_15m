@@ -11,9 +11,8 @@ PROMPT_SYS_MINI = (
 
 PROMPT_USER_MINI = (
     "Dữ liệu đầy đủ dưới đây (không bỏ sót trường nào). Phân tích như trader chuyên nghiệp, dùng mọi phương pháp: price action & mô hình nến (pinbar, engulfing, doji, breakout...), EMA20/50/200, RSI, MACD, ATR, volume spike, đa khung (15m/H1/H4), ETH bias, orderbook. "
-    "Chỉ chọn lệnh khi conf ≥ 7.0 và RR ≥ 1.8."
-    "Chốt lời theo chuẩn R: TP1 = 2R (R = |entry - sl|; với long: TP = entry + k*R; với short: TP = entry - k*R). "
-    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp1\":0.0,\"conf\":0.0,\"rr\":0.0}]}; rr là tỷ lệ RR tại TP1, yêu cầu rr ≥ 1.8 "
+    "Chỉ chọn lệnh khi tỷ lệ thắng cao và RR tốt."
+    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp1\":0.0,\"conf\":0.0]};"
     "Không có tín hiệu → {\"coins\":[]}. "
     "DATA:{payload}"
 )
