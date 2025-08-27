@@ -86,6 +86,62 @@ def test_run_sends_coins_only(monkeypatch):
     assert data["placed"] == []
 
 
+def test_run_cancels_existing_orders(monkeypatch, tmp_path):
+    class CancelExchange:
+        def __init__(self):
+            self.orders = []
+            self.cancelled = []
+
+        def fetch_balance(self):
+            return {"total": {"USDT": 1000}}
+
+        def fetch_open_orders(self, symbol):
+            return [{"id": "old1"}, {"id": "old2"}]
+
+        def cancel_order(self, oid, symbol):
+            self.cancelled.append((oid, symbol))
+
+        def create_order(self, symbol, typ, side, qty, price, params):
+            self.orders.append((symbol, typ, side, qty, price, params))
+            return {"id": "new"}
+
+    ex = CancelExchange()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"coins": ["dummy"]})
+    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
+    monkeypatch.setattr(orch, "extract_content", lambda r: "")
+    monkeypatch.setattr(
+        orch,
+        "parse_mini_actions",
+        lambda text: {
+            "coins": [
+                {
+                    "pair": "BTCUSDT",
+                    "side": "buy",
+                    "entry": 1,
+                    "sl": 0.9,
+                    "tp1": 1.1,
+                    "qty": 1,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+
+    orch.run(run_live=True, ex=ex)
+
+    assert ex.cancelled == [("old1", "BTC/USDT"), ("old2", "BTC/USDT")]
+    assert len(ex.orders) == 1
+    assert not (tmp_path / "BTCUSDT.json").exists()
+
+
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
