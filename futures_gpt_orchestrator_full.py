@@ -22,8 +22,10 @@ from ccxt.base.errors import OperationRejected  # type: ignore
 
 try:  # pragma: no cover - optional dependency
     from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore
+    from apscheduler.triggers.cron import CronTrigger  # type: ignore
 except Exception:  # pragma: no cover - APScheduler missing
     BlockingScheduler = None
+    CronTrigger = None
 
 from env_utils import (
     dumps_min,
@@ -416,14 +418,13 @@ def move_sl_to_entry(exchange):
 
 def live_loop(
     limit: int = 30,
-    run_interval: int = 900,      # orchestrator job (15m)
     cancel_interval: int = 600,   # cancel stale orders (10m)
     add_interval: int = 60,       # SL/TP add (1m)
     move_sl_interval: int = 300,  # move SL to entry (5m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
-    - Orchestrator job mặc định chạy mỗi 15 phút.
+    - Orchestrator job runs at minutes 0, 15, 30 and 45.
     - Cancel stale limit orders mỗi 10 phút.
     - Check để add SL/TP mỗi 1 phút.
     """
@@ -432,9 +433,8 @@ def live_loop(
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s run_interval=%s cancel_interval=%s add_interval=%s move_sl_interval=%s",
+        "Starting live loop limit=%s cancel_interval=%s add_interval=%s move_sl_interval=%s",
         limit,
-        run_interval,
         cancel_interval,
         add_interval,
         move_sl_interval,
@@ -471,7 +471,7 @@ def live_loop(
         except Exception:
             logger.exception("move_sl_job error")
 
-    scheduler.add_job(run_job, "interval", seconds=run_interval)
+    scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
 
     # Các job còn lại chạy theo interval
     scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
