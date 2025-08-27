@@ -18,9 +18,16 @@ class DummyExchange:
 class CaptureExchange:
     def __init__(self):
         self.orders = []
+        self.cancelled = []
 
     def create_order(self, symbol, typ, side, qty, price, params):
         self.orders.append((symbol, typ, side, qty, price, params))
+
+    def fetch_open_orders(self, symbol):
+        return []
+
+    def cancel_order(self, oid, symbol):
+        self.cancelled.append((oid, symbol))
 
 
 class FilledExchange(CaptureExchange):
@@ -83,6 +90,7 @@ def test_run_sends_coins_only(monkeypatch):
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
     orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2)
+    assert ex.cancelled == []
     assert ex.orders == [
         (
             "BTC/USDT",
@@ -101,6 +109,18 @@ def test_place_sl_tp(side, exit_side):
             {"stopPrice": 2, "closePosition": True},
         ),
     ]
+
+
+class ExistingStopExchange(CaptureExchange):
+    def fetch_open_orders(self, symbol):
+        return [{"id": "old1", "info": {"closePosition": True}}]
+
+
+def test_place_sl_tp_cancels_existing():
+    ex = ExistingStopExchange()
+    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 1, 2)
+    assert ex.cancelled == [("old1", "BTC/USDT")]
+    assert len(ex.orders) == 2
 
 
 def test_add_sl_tp_from_json(tmp_path, monkeypatch):

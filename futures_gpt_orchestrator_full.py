@@ -18,6 +18,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+from ccxt.base.errors import OperationRejected  # type: ignore
+
 try:  # pragma: no cover - optional dependency
     from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore
 except Exception:  # pragma: no cover - APScheduler missing
@@ -64,22 +66,45 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
     exit_side = "sell" if side == "buy" else "buy"
     params = {"closePosition": True}
 
-    exchange.create_order(
-        symbol,
-        "market",
-        exit_side,
-        None,
-        None,
-        {**params, "stopPrice": sl},
-    )
-    exchange.create_order(
-        symbol,
-        "market",
-        exit_side,
-        None,
-        None,
-        {**params, "stopPrice": tp1},
-    )
+    # To avoid hitting Binance's max stop order limit, cancel any existing
+    # close-position stop orders before placing new ones.
+    try:
+        orders = exchange.fetch_open_orders(symbol)
+    except Exception as e:  # pragma: no cover - network or exchange error
+        logger.warning("_place_sl_tp fetch_open_orders error for %s: %s", symbol, e)
+        orders = []
+    for o in orders or []:
+        try:
+            info = o.get("info") or {}
+            if info.get("closePosition"):
+                exchange.cancel_order(o.get("id"), symbol)
+        except Exception as e:  # pragma: no cover - cancel may fail
+            logger.warning("_place_sl_tp cancel_order error for %s: %s", symbol, e)
+
+    try:
+        exchange.create_order(
+            symbol,
+            "market",
+            exit_side,
+            None,
+            None,
+            {**params, "stopPrice": sl},
+        )
+        exchange.create_order(
+            symbol,
+            "market",
+            exit_side,
+            None,
+            None,
+            {**params, "stopPrice": tp1},
+        )
+    except OperationRejected as e:  # pragma: no cover - depends on exchange state
+        if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
+            logger.warning(
+                "_place_sl_tp reached max stop order limit for %s: %s", symbol, e
+            )
+        else:
+            raise
 
 
 # Default limit increased to 30 to expand the number of coins processed
