@@ -10,12 +10,27 @@ PROMPT_SYS_MINI = (
 )
 
 PROMPT_USER_MINI = (
-    "Dữ liệu đầy đủ dưới đây (không bỏ sót trường nào). Phân tích như trader chuyên nghiệp, dùng mọi phương pháp: price action & mô hình nến (pinbar, engulfing, doji, breakout...), EMA20/50/200, RSI, MACD, ATR, volume spike, đa khung (15m/H1/H4), ETH bias, orderbook. "
-    "Chỉ chọn lệnh khi conf >= 0.75 và RR tốt."
-    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp1\":0.0,\"conf\":0.0]};"
-    "Không có tín hiệu → {\"coins\":[]}. "
+    "Dữ liệu đầy đủ dưới đây (không bỏ sót trường nào). "
+    "Phân tích như trader chuyên nghiệp, dùng mọi phương pháp: price action & mô hình nến (pinbar, engulfing, doji, breakout...), "
+    "EMA20/50/200, RSI, MACD, ATR, volume spike, đa khung (15m/H1/H4), ETH bias, orderbook. "
+    "Ưu tiên LIMIT entry tại vùng giá tối ưu; nếu không có LIMIT hợp lý -> bỏ. "
+    "Chỉ chọn khi: conf ≥ 7.0 và RR_TP1 ≥ 1.8. Nếu không đạt → bỏ. "
+
+    "### Quy tắc vào lệnh: "
+    "- Trend filter: Long chỉ khi close15m > EMA20 và H1/H4 trend = up. Short chỉ khi close15m < EMA20 và H1/H4 trend = down. "
+    "- Momentum filter: Long cần RSI(15m) > 50 và MACD histogram dương. Short cần RSI(15m) < 50 và MACD histogram âm. "
+    "- Funding filter: Nếu bars_to ≤ 2 và funding rate bất lợi → bỏ kèo (hoặc close nếu chưa đạt ≥0.8R). "
+    "- Orderbook filter: imbalance ≥ 0.15 theo hướng lệnh và spread ≤ 0.1%. "
+    "- ATR/SL filter: SL phải ≥ 0.6 × ATR(15m). "
+    "- Session filter: Asia yêu cầu conf ≥ 0.8, US yêu cầu conf ≥ 0.7. Nếu mins_to_close ≤ 15 và tín hiệu yếu → bỏ. "
+    "- Entry rule: Ưu tiên LIMIT pullback về EMA20/key level; nếu tín hiệu nến (pinbar/engulfing/doji/breakout) → đặt LIMIT tại 50% thân nến, không đuổi breakout nến 2–3. "
+
+    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp1\":0.0,\"conf\":0.0}]}. "
+    "Không có tín hiệu hợp lệ → {\"coins\":[]}. "
+
     "DATA:{payload}"
 )
+
 
 def build_prompts_mini(payload_kept):
     """Return prompt dict for the mini model."""
