@@ -7,8 +7,8 @@
 
 # 2. UPLOAD BOT MỚI TỪ MÁY LOCAL (trên Git Bash Windows)
 
-#dual 
-scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Downloads/scalping_1h/scalping_1h_deploy.zip" ubuntu@47.130.82.78:~
+#dual
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Downloads/scalping_15m/scalping_15m_deploy.zip" ubuntu@47.130.82.78:~
 
 chmod +x deploy_full_dual.sh
 ./deploy_full_dual.sh
@@ -67,7 +67,7 @@ ps aux | grep call_check_position.py
 pkill -f bot_main.py || true
 pkill -f call_check_position.py || true
 # 4. GIẢI NÉN ZIP (nếu không dùng script tự động)
-unzip -o scalping_1h_deploy -d ~/scalping_1h_deploy
+unzip -o scalping_15m_deploy -d ~/scalping_15m_deploy
 
 # add permission
     chmod +x deploy.sh

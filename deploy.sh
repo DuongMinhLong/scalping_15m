@@ -7,7 +7,7 @@ set -euo pipefail
 step=1
 step() { echo -e "\n[$step] $1"; step=$((step+1)); }
 
-echo "🚀 Starting full deployment for scalping 1h bot..."
+echo "🚀 Starting full deployment for scalping 15m bot..."
 
 step "Ensure python3 and pip are available"
 if ! command -v python3 >/dev/null; then

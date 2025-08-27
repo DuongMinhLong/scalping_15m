@@ -1,4 +1,4 @@
-# scalping_1h
+# scalping_15m
 
 Automated trading bot orchestrator with scheduled checks and order management.
 

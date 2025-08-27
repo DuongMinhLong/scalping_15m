@@ -1,4 +1,4 @@
-"""Futures → GPT Orchestrator (1h focus, H4/D1 context; retains ETH bias).
+"""Futures → GPT Orchestrator (15m focus, H4/D1 context; retains ETH bias).
 
 This script orchestrates the flow:
 1. Build payloads from market data
