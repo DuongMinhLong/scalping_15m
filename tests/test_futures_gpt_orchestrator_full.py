@@ -94,7 +94,7 @@ def test_place_sl_tp(side, exit_side):
     assert ex.orders == [
         (
             "BTC/USDT",
-            "market",
+            "STOP_MARKET",
             exit_side,
             None,
             None,
@@ -102,7 +102,7 @@ def test_place_sl_tp(side, exit_side):
         ),
         (
             "BTC/USDT",
-            "market",
+            "TAKE_PROFIT_MARKET",
             exit_side,
             None,
             None,
@@ -143,7 +143,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
     assert ex.orders == [
         (
             "BTC/USDT",
-            "market",
+            "STOP_MARKET",
             "sell",
             None,
             None,
@@ -151,7 +151,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         ),
         (
             "BTC/USDT",
-            "market",
+            "TAKE_PROFIT_MARKET",
             "sell",
             None,
             None,
@@ -192,7 +192,7 @@ def test_move_sl_to_entry(monkeypatch):
     assert ex.orders == [
         (
             "BTC/USDT",
-            "market",
+            "STOP_MARKET",
             "sell",
             None,
             None,

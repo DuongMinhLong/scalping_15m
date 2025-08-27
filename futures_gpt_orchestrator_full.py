@@ -86,7 +86,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
     try:
         exchange.create_order(
             symbol,
-            "market",
+            "STOP_MARKET",
             exit_side,
             None,
             None,
@@ -94,7 +94,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
         )
         exchange.create_order(
             symbol,
-            "market",
+            "TAKE_PROFIT_MARKET",
             exit_side,
             None,
             None,
@@ -406,7 +406,7 @@ def move_sl_to_entry(exchange):
         try:
             exchange.create_order(
                 symbol,
-                "market",
+                "STOP_MARKET",
                 exit_side,
                 None,
                 None,
