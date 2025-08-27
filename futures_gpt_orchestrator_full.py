@@ -62,6 +62,35 @@ logger = logging.getLogger(__name__)
 LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
 
 
+def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
+    """Cancel all open orders for ``symbol`` and remove its metadata file."""
+
+    try:
+        orders = exchange.fetch_open_orders(symbol)
+    except Exception as e:  # pragma: no cover - network or exchange error
+        logger.warning(
+            "cancel_all_orders_for_pair fetch_open_orders error for %s: %s",
+            pair,
+            e,
+        )
+        orders = []
+    for o in orders or []:
+        try:
+            exchange.cancel_order(o.get("id"), symbol)
+        except Exception as e:  # pragma: no cover - cancel may fail
+            logger.warning(
+                "cancel_all_orders_for_pair cancel_order error for %s: %s",
+                pair,
+                e,
+            )
+    fp = LIMIT_ORDER_DIR / f"{pair}.json"
+    try:
+        if fp.exists():
+            fp.unlink()
+    except Exception as e:  # pragma: no cover - file removal may fail
+        logger.warning("cancel_all_orders_for_pair unlink error %s: %s", fp, e)
+
+
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
     """Place stop-loss and single take-profit orders as close-all market."""
 
@@ -181,6 +210,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
+            cancel_all_orders_for_pair(ex, ccxt_sym, pair)
             entry_order = ex.create_order(
                 ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
             )
