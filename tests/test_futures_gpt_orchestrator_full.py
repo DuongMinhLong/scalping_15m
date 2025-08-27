@@ -105,10 +105,8 @@ def test_place_sl_tp(side, exit_side):
 
 def test_add_sl_tp_from_json(tmp_path, monkeypatch):
     limit_dir = tmp_path / "limit"
-    active_dir = tmp_path / "active"
     limit_dir.mkdir()
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", limit_dir)
-    monkeypatch.setattr(orch, "ACTIVE_ORDER_DIR", active_dir)
     data = {
         "pair": "BTCUSDT",
         "order_id": "1",
@@ -122,7 +120,6 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
     ex = FilledExchange()
     orch.add_sl_tp_from_json(ex)
     assert not (limit_dir / "BTCUSDT.json").exists()
-    assert (active_dir / "BTCUSDT.json").exists()
     assert ex.orders == [
         (
             "BTC/USDT",
@@ -140,6 +137,47 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             None,
             {"stopPrice": 1.1, "reduceOnly": True, "closePosition": True},
         ),
+    ]
+
+
+class BreakEvenExchange(CaptureExchange):
+    def __init__(self):
+        super().__init__()
+        self.cancelled = []
+
+    def fetch_positions(self):
+        return [{"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 100}]
+
+    def fetch_open_orders(self, symbol):
+        return [
+            {
+                "id": "sl1",
+                "symbol": symbol,
+                "reduceOnly": True,
+                "stopPrice": 90,
+            }
+        ]
+
+    def fetch_ticker(self, symbol):
+        return {"last": 110}
+
+    def cancel_order(self, oid, sym):
+        self.cancelled.append((oid, sym))
+
+
+def test_move_sl_to_entry(monkeypatch):
+    ex = BreakEvenExchange()
+    orch.move_sl_to_entry(ex)
+    assert ex.cancelled == [("sl1", "BTC/USDT")]
+    assert ex.orders == [
+        (
+            "BTC/USDT",
+            "market",
+            "sell",
+            None,
+            None,
+            {"stopPrice": 100, "reduceOnly": True, "closePosition": True},
+        )
     ]
 
 
