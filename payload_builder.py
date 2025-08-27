@@ -17,7 +17,7 @@ from exchange_utils import (
     fetch_ohlcv_df,
     load_usdtm,
     orderbook_snapshot,
-    top_gainers,
+    cache_top_by_qv,
     top_by_market_cap,
     funding_snapshot,
     open_interest_snapshot,
@@ -194,7 +194,7 @@ def build_payload(
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    gainers = top_gainers(exchange, limit=limit)
+    volumes = cache_top_by_qv(exchange, limit=limit)
     mc_list = top_by_market_cap(max(limit, 200), ttl=mc_ttl)
     mc_bases = set(mc_list)
     markets = load_usdtm(exchange)
@@ -206,7 +206,7 @@ def build_payload(
     symbols: List[str] = []
     used_bases: Set[str] = set()
 
-    for s in gainers:
+    for s in volumes:
         pair = norm_pair_symbol(s)
         base = strip_numeric_prefix(pair[:-4])
         if (

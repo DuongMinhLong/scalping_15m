@@ -82,12 +82,24 @@ def test_run_sends_coins_only(monkeypatch):
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2, 3, 4)
+    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2)
     assert ex.orders == [
-        ("BTC/USDT", "limit", exit_side, 10, 1, {"stopPrice": 1, "reduceOnly": True}),
-        ("BTC/USDT", "limit", exit_side, 3.0, 2, {"reduceOnly": True}),
-        ("BTC/USDT", "limit", exit_side, 5.0, 3, {"reduceOnly": True}),
-        ("BTC/USDT", "limit", exit_side, 2.0, 4, {"reduceOnly": True}),
+        (
+            "BTC/USDT",
+            "market",
+            exit_side,
+            None,
+            None,
+            {"stopPrice": 1, "reduceOnly": True, "closePosition": True},
+        ),
+        (
+            "BTC/USDT",
+            "market",
+            exit_side,
+            None,
+            None,
+            {"stopPrice": 2, "reduceOnly": True, "closePosition": True},
+        ),
     ]
 
 
@@ -105,8 +117,6 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         "qty": 10,
         "sl": 0.9,
         "tp1": 1.1,
-        "tp2": 1.2,
-        "tp3": 1.3,
     }
     (limit_dir / "BTCUSDT.json").write_text(json.dumps(data))
     ex = FilledExchange()
@@ -114,10 +124,22 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
     assert not (limit_dir / "BTCUSDT.json").exists()
     assert (active_dir / "BTCUSDT.json").exists()
     assert ex.orders == [
-        ("BTC/USDT", "limit", "sell", 10, 0.9, {"stopPrice": 0.9, "reduceOnly": True}),
-        ("BTC/USDT", "limit", "sell", 3.0, 1.1, {"reduceOnly": True}),
-        ("BTC/USDT", "limit", "sell", 5.0, 1.2, {"reduceOnly": True}),
-        ("BTC/USDT", "limit", "sell", 2.0, 1.3, {"reduceOnly": True}),
+        (
+            "BTC/USDT",
+            "market",
+            "sell",
+            None,
+            None,
+            {"stopPrice": 0.9, "reduceOnly": True, "closePosition": True},
+        ),
+        (
+            "BTC/USDT",
+            "market",
+            "sell",
+            None,
+            None,
+            {"stopPrice": 1.1, "reduceOnly": True, "closePosition": True},
+        ),
     ]
 
 
@@ -159,74 +181,3 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
     assert ex.cancelled == []
     assert (tmp_path / "BTCUSDT.json").exists()
-
-
-class TP1Exchange:
-    def __init__(self, status, filled, amount=1):
-        self.status = status
-        self.filled = filled
-        self.amount = amount
-        self.cancelled = []
-        self.created = []
-
-    def fetch_order(self, oid, symbol):
-        return {
-            "id": oid,
-            "price": 100,
-            "status": self.status,
-            "filled": self.filled,
-            "amount": self.amount,
-        }
-
-    def cancel_order(self, oid, symbol):
-        self.cancelled.append((oid, symbol))
-
-    def create_order(self, symbol, typ, side, qty, price, params):
-        self.created.append((symbol, typ, side, qty, price, params))
-
-
-def test_handle_tp1_hit_checks_status(monkeypatch):
-    monkeypatch.setattr(orch, "_get_sl_tp_orders", lambda e, s: ([], [], None))
-    tp_orders = [
-        {"id": "1", "price": 100, "amount": 1},
-        {"id": "2", "price": 110, "amount": 1},
-        {"id": "3", "price": 120, "amount": 1},
-    ]
-
-    ex_closed = TP1Exchange("closed", 1)
-    orch._handle_tp1_hit(ex_closed, "BTC/USDT", "buy", 101, [], tp_orders)
-    assert ex_closed.cancelled == [("1", "BTC/USDT")]
-    assert ex_closed.created
-
-    ex_open = TP1Exchange("open", 0.5)
-    orch._handle_tp1_hit(ex_open, "BTC/USDT", "buy", 101, [], tp_orders)
-    assert ex_open.cancelled == []
-    assert ex_open.created == []
-
-
-def test_move_sl_triggers_on_equal_tp1(monkeypatch):
-    pos = {"symbol": "BTC/USDT", "side": "buy", "contracts": 1, "entryPrice": 100}
-
-    class Ex:
-        def fetch_positions(self):
-            return [pos]
-
-    ex = Ex()
-
-    sl_order = {"id": "sl", "price": 95}
-    tp_order = {"id": "tp1", "price": 105}
-
-    monkeypatch.setattr(
-        orch, "_get_sl_tp_orders", lambda e, s: ([sl_order], [tp_order], 105.0)
-    )
-
-    called = {}
-
-    def fake_update(exchange, symbol, side, amt_val, entry_price, sl):
-        called["called"] = (symbol, side, amt_val, entry_price, sl)
-
-    monkeypatch.setattr(orch, "_update_sl_to_entry", fake_update)
-
-    orch.move_sl_to_entry_if_tp1_hit(ex)
-
-    assert "called" in called
