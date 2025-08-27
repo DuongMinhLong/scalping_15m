@@ -175,8 +175,8 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     import pandas as pd
 
     payload_builder.CACHE_M15.clear()
+    payload_builder.CACHE_H1.clear()
     payload_builder.CACHE_H4.clear()
-    payload_builder.CACHE_D1.clear()
 
     def fake_fetch(exchange, symbol, timeframe, limit, since=None):
         return pd.DataFrame(
@@ -220,8 +220,8 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     assert {
         "pair",
         "m15",
+        "h1",
         "h4",
-        "d1",
         "funding",
         "oi",
         "cvd",
