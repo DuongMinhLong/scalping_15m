@@ -75,41 +75,46 @@ def positions_snapshot(exchange) -> List[Dict]:
         side = "buy" if amt_val > 0 else "sell"
         sl = None
         tp1 = None
-        tp2 = None
-        tp3 = None
         try:
             orders = exchange.fetch_open_orders(sym)
         except Exception as e:
             logger.warning("positions_snapshot fetch_open_orders error for %s: %s", sym, e)
             orders = []
-        sl_orders = [
+        stop_orders = [
             o
             for o in orders
-            if (o.get("type") or "").lower() == "limit"
-            and o.get("reduceOnly")
-            and (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
-        ]
-        tp_orders = [
-            o
-            for o in orders
-            if (o.get("type") or "").lower() == "limit"
-            and o.get("reduceOnly")
-            and not (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
-        ]
-        if sl_orders:
-            sl = rfloat(
-                sl_orders[0].get("stopPrice")
-                or (sl_orders[0].get("info") or {}).get("stopPrice")
-                or sl_orders[0].get("price")
+            if o.get("reduceOnly")
+            and (
+                o.get("stopPrice")
+                or (o.get("info") or {}).get("stopPrice")
+                or o.get("price")
             )
-        prices = [float(o.get("price") or 0) for o in tp_orders]
-        prices.sort(reverse=(side == "sell"))
-        if len(prices) >= 1:
-            tp1 = rfloat(prices[0])
-        if len(prices) >= 2:
-            tp2 = rfloat(prices[1])
-        if len(prices) >= 3:
-            tp3 = rfloat(prices[2])
+        ]
+        try:
+            prices = [
+                (
+                    o,
+                    float(
+                        o.get("stopPrice")
+                        or (o.get("info") or {}).get("stopPrice")
+                        or o.get("price")
+                        or 0
+                    ),
+                )
+                for o in stop_orders
+            ]
+        except Exception as e:
+            logger.warning("positions_snapshot price parse error for %s: %s", sym, e)
+            prices = []
+        if prices:
+            if side == "buy":
+                sl_order = min(prices, key=lambda x: x[1])
+                tp_order = max(prices, key=lambda x: x[1])
+            else:
+                sl_order = max(prices, key=lambda x: x[1])
+                tp_order = min(prices, key=lambda x: x[1])
+            sl = rfloat(sl_order[1])
+            tp1 = rfloat(tp_order[1])
         out.append(
             drop_empty(
                 {
@@ -118,8 +123,6 @@ def positions_snapshot(exchange) -> List[Dict]:
                     "entry": rfloat(entry_price),
                     "sl": sl,
                     "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
                 }
             )
         )

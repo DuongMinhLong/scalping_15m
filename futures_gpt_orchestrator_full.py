@@ -60,25 +60,27 @@ LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
 ACTIVE_ORDER_DIR = Path("outputs") / "active_orders"
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
-    """Place stop-loss and three take-profit orders for an entry."""
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
+    """Place stop-loss and single take-profit orders as close-all market."""
 
-    qty_tp1 = rfloat(qty * 0.3, 8)
-    qty_tp2 = rfloat(qty * 0.5, 8)
-    qty_tp3 = rfloat(qty - qty_tp1 - qty_tp2, 8)
     exit_side = "sell" if side == "buy" else "buy"
+    params = {"reduceOnly": True, "closePosition": True}
 
     exchange.create_order(
-        symbol, "limit", exit_side, qty, sl, {"stopPrice": sl, "reduceOnly": True}
+        symbol,
+        "market",
+        exit_side,
+        None,
+        None,
+        {**params, "stopPrice": sl},
     )
     exchange.create_order(
-        symbol, "limit", exit_side, qty_tp1, tp1, {"reduceOnly": True}
-    )
-    exchange.create_order(
-        symbol, "limit", exit_side, qty_tp2, tp2, {"reduceOnly": True}
-    )
-    exchange.create_order(
-        symbol, "limit", exit_side, qty_tp3, tp3, {"reduceOnly": True}
+        symbol,
+        "market",
+        exit_side,
+        None,
+        None,
+        {**params, "stopPrice": tp1},
     )
 
 
@@ -150,8 +152,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             entry = c.get("entry")
             sl = c.get("sl")
             tp1 = c.get("tp1")
-            tp2 = c.get("tp2")
-            tp3 = c.get("tp3")
             qty = c.get("qty")
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
@@ -170,8 +170,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "qty": qty,
                         "sl": sl,
                         "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
                     }
                 ),
                 folder=str(LIMIT_ORDER_DIR),
@@ -183,8 +181,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "entry": entry,
                     "sl": sl,
                     "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
                     "qty": qty,
                     "entry_id": entry_order.get("id"),
                 }
@@ -267,9 +263,7 @@ def add_sl_tp_from_json(exchange):
         qty = data.get("qty")
         sl = data.get("sl")
         tp1 = data.get("tp1")
-        tp2 = data.get("tp2")
-        tp3 = data.get("tp3")
-        if not (pair and order_id and side and qty and sl and tp1 and tp2 and tp3):
+        if not (pair and order_id and side and qty and sl and tp1):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
         try:
@@ -280,7 +274,7 @@ def add_sl_tp_from_json(exchange):
         status = (o.get("status") or "").lower()
         if status != "closed":
             continue
-        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
+        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1)
         try:
             ACTIVE_ORDER_DIR.mkdir(parents=True, exist_ok=True)
             fp.replace(ACTIVE_ORDER_DIR / fp.name)
@@ -313,163 +307,19 @@ def _get_position_info(pos):
     return symbol, side, entry_price, amt_val
 
 
-def _get_sl_tp_orders(exchange, symbol):
-    try:
-        ticker = exchange.fetch_ticker(symbol)
-        last = ticker.get("last")
-        if last is None:
-            last = (ticker.get("info") or {}).get("lastPrice")
-        last_price = float(last)
-    except Exception as e:
-        logger.warning("_get_sl_tp_orders fetch_ticker error for %s: %s", symbol, e)
-        last_price = 0
-    try:
-        orders = exchange.fetch_open_orders(symbol)
-    except Exception as e:
-        logger.warning("_get_sl_tp_orders fetch_open_orders error for %s: %s", symbol, e)
-        return [], [], last_price
-    sl_orders = [
-        o
-        for o in orders
-        if (o.get("type") or "").lower() == "limit"
-        and o.get("reduceOnly")
-        and (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
-    ]
-    tp_orders = [
-        o
-        for o in orders
-        if (o.get("type") or "").lower() == "limit"
-        and o.get("reduceOnly")
-        and not (o.get("stopPrice") or (o.get("info") or {}).get("stopPrice"))
-    ]
-    return sl_orders, tp_orders, last_price
 
 
-def _handle_tp1_hit(exchange, symbol, side, last_price, sl_orders, tp_orders):
-    if len(tp_orders) < 3:
-        return sl_orders, tp_orders
-    if side == "buy":
-        tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0))[0]
-        price_hit = last_price >= float(tp1_order.get("price") or 0)
-        exit_side = "sell"
-    else:
-        tp1_order = sorted(tp_orders, key=lambda o: float(o.get("price") or 0), reverse=True)[0]
-        price_hit = last_price <= float(tp1_order.get("price") or 0)
-        exit_side = "buy"
-    if not price_hit:
-        return sl_orders, tp_orders
-
-    try:
-        tp1_order = exchange.fetch_order(tp1_order.get("id"), symbol)
-    except Exception as e:
-        logger.warning("_handle_tp1_hit fetch_order error: %s", e)
-        return sl_orders, tp_orders
-
-    filled = float(tp1_order.get("filled") or 0)
-    amount = float(tp1_order.get("amount") or 0)
-    status = tp1_order.get("status")
-    price = float(tp1_order.get("price") or 0)
-    logger.info(
-        "TP1 order check %s price=%.8f status=%s filled=%.8f amount=%.8f",
-        symbol,
-        price,
-        status,
-        filled,
-        amount,
-    )
-
-    if status != "closed" and filled < amount:
-        return sl_orders, tp_orders
-
-    qty_tp1 = abs(amount or float(tp1_order.get("remaining") or 0))
-    try:
-        exchange.cancel_order(tp1_order.get("id"), symbol)
-    except Exception as e:
-        logger.warning("_handle_tp1_hit cancel_order error: %s", e)
-    try:
-        exchange.create_order(symbol, "limit", exit_side, qty_tp1, price, {"reduceOnly": True})
-    except Exception as e:
-        logger.warning("_handle_tp1_hit create_order error: %s", e)
-        return sl_orders, tp_orders
-    sl_orders, tp_orders, _ = _get_sl_tp_orders(exchange, symbol)
-    return sl_orders, tp_orders
 
 
-def _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_order):
-    try:
-        sl_price = float(sl_order.get("price") or sl_order.get("stopPrice") or 0)
-    except Exception as e:
-        logger.warning("_update_sl_to_entry parse sl price error: %s", e)
-        sl_price = 0
-    if abs(sl_price - entry_price) < 1e-8:
-        return
-    try:
-        exchange.cancel_order(sl_order.get("id"), symbol)
-    except Exception as e:
-        logger.warning("_update_sl_to_entry cancel_order error: %s", e)
-    try:
-        qty = abs(amt_val)
-        if side == "buy":
-            exchange.create_order(
-                symbol,
-                "limit",
-                "sell",
-                qty,
-                entry_price,
-                {"stopPrice": entry_price, "reduceOnly": True},
-            )
-        else:
-            exchange.create_order(
-                symbol,
-                "limit",
-                "buy",
-                qty,
-                entry_price,
-                {"stopPrice": entry_price, "reduceOnly": True},
-            )
-    except Exception as e:
-        logger.warning("_update_sl_to_entry create_order error: %s", e)
-        return
-
-
-def move_sl_to_entry_if_tp1_hit(exchange):
-    """Move stop-loss to entry once price crosses the first take-profit."""
-
-    try:
-        positions = exchange.fetch_positions()
-    except Exception as e:
-        logger.warning("move_sl_to_entry_if_tp1_hit fetch_positions error: %s", e)
-        return
-
-    for pos in positions or []:
-        info = _get_position_info(pos)
-        if info is None:
-            continue
-        symbol, side, entry_price, amt_val = info
-        sl_orders, tp_orders, last_price = _get_sl_tp_orders(exchange, symbol)
-        if not sl_orders or not tp_orders:
-            continue
-        try:
-            tp_prices = [float(o.get("price") or 0) for o in tp_orders]
-        except Exception as e:
-            logger.warning("move_sl_to_entry_if_tp1_hit parse tp price error: %s", e)
-            continue
-        tp1_price = min(tp_prices) if side == "buy" else max(tp_prices)
-        price_hit = last_price >= tp1_price if side == "buy" else last_price <= tp1_price
-        if not price_hit:
-            continue
-        _update_sl_to_entry(exchange, symbol, side, amt_val, entry_price, sl_orders[0])
 def live_loop(
     limit: int = 30,
-    run_interval: int = 3600,      # orchestrator job (1h)
-    sl_interval: int = 300,        # stop-loss check (5m)
-    cancel_interval: int = 600,    # cancel stale orders (10m)
-    add_interval: int = 60,        # SL/TP add (1m)
+    run_interval: int = 900,      # orchestrator job (15m)
+    cancel_interval: int = 600,   # cancel stale orders (10m)
+    add_interval: int = 60,       # SL/TP add (1m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
-    - Orchestrator job mặc định chạy mỗi giờ (đúng mốc HH:00).
-    - Stop-loss check mỗi 5 phút.
+    - Orchestrator job mặc định chạy mỗi 15 phút.
     - Cancel stale limit orders mỗi 10 phút.
     - Check để add SL/TP mỗi 1 phút.
     """
@@ -478,9 +328,11 @@ def live_loop(
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s run_interval=%s sl_interval=%s "
-        "cancel_interval=%s add_interval=%s",
-        limit, run_interval, sl_interval, cancel_interval, add_interval,
+        "Starting live loop limit=%s run_interval=%s cancel_interval=%s add_interval=%s",
+        limit,
+        run_interval,
+        cancel_interval,
+        add_interval,
     )
 
     ex = make_exchange()
@@ -492,13 +344,6 @@ def live_loop(
             run(run_live=True, limit=limit, ex=ex)
         except Exception:
             logger.exception("run_job error")
-
-    def sl_job():
-        logger.info("Scheduled stop-loss check")
-        try:
-            move_sl_to_entry_if_tp1_hit(ex)
-        except Exception:
-            logger.exception("sl_job error")
 
     def cancel_job():
         logger.info("Scheduled stale order cancel check")
@@ -514,11 +359,9 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
 
-    # Orchestrator: chạy mỗi giờ đúng HH:00
-    scheduler.add_job(run_job, "cron", minute=0, second=0)
+    scheduler.add_job(run_job, "interval", seconds=run_interval)
 
     # Các job còn lại chạy theo interval
-    scheduler.add_job(sl_job, "interval", seconds=sl_interval)
     scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
 
