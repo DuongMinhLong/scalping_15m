@@ -90,7 +90,7 @@ def test_place_sl_tp(side, exit_side):
             exit_side,
             None,
             None,
-            {"stopPrice": 1, "reduceOnly": True, "closePosition": True},
+            {"stopPrice": 1, "closePosition": True},
         ),
         (
             "BTC/USDT",
@@ -98,7 +98,7 @@ def test_place_sl_tp(side, exit_side):
             exit_side,
             None,
             None,
-            {"stopPrice": 2, "reduceOnly": True, "closePosition": True},
+            {"stopPrice": 2, "closePosition": True},
         ),
     ]
 
@@ -127,7 +127,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             "sell",
             None,
             None,
-            {"stopPrice": 0.9, "reduceOnly": True, "closePosition": True},
+            {"stopPrice": 0.9, "closePosition": True},
         ),
         (
             "BTC/USDT",
@@ -135,7 +135,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             "sell",
             None,
             None,
-            {"stopPrice": 1.1, "reduceOnly": True, "closePosition": True},
+            {"stopPrice": 1.1, "closePosition": True},
         ),
     ]
 
@@ -176,7 +176,7 @@ def test_move_sl_to_entry(monkeypatch):
             "sell",
             None,
             None,
-            {"stopPrice": 100, "reduceOnly": True, "closePosition": True},
+            {"stopPrice": 100, "closePosition": True},
         )
     ]
 
