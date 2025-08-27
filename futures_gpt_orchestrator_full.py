@@ -62,7 +62,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
     """Place stop-loss and single take-profit orders as close-all market."""
 
     exit_side = "sell" if side == "buy" else "buy"
-    params = {"reduceOnly": True, "closePosition": True}
+    params = {"closePosition": True}
 
     exchange.create_order(
         symbol,
@@ -383,7 +383,7 @@ def move_sl_to_entry(exchange):
                 exit_side,
                 None,
                 None,
-                {"reduceOnly": True, "closePosition": True, "stopPrice": entry},
+                {"closePosition": True, "stopPrice": entry},
             )
         except Exception as e:
             logger.warning("move_sl_to_entry create_order error for %s: %s", pair, e)
