@@ -257,6 +257,47 @@ def test_move_sl_to_entry(monkeypatch):
     ]
 
 
+class BreakEvenExchangeShort(CaptureExchange):
+    def __init__(self):
+        super().__init__()
+        self.cancelled = []
+
+    def fetch_positions(self):
+        return [{"symbol": "BTC/USDT", "contracts": -1, "entryPrice": 100}]
+
+    def fetch_open_orders(self, symbol):
+        return [
+            {
+                "id": "sl1",
+                "symbol": symbol,
+                "reduceOnly": True,
+                "stopPrice": 110,
+            }
+        ]
+
+    def fetch_ticker(self, symbol):
+        return {"last": 90}
+
+    def cancel_order(self, oid, sym):
+        self.cancelled.append((oid, sym))
+
+
+def test_move_sl_to_entry_short(monkeypatch):
+    ex = BreakEvenExchangeShort()
+    orch.move_sl_to_entry(ex)
+    assert ex.cancelled == [("sl1", "BTC/USDT")]
+    assert ex.orders == [
+        (
+            "BTC/USDT",
+            "STOP_MARKET",
+            "buy",
+            None,
+            None,
+            {"stopPrice": 100, "closePosition": True},
+        )
+    ]
+
+
 class StaleExchange:
     def __init__(self):
         self.options = {}

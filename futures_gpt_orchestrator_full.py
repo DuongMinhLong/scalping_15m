@@ -362,7 +362,7 @@ def _get_position_info(pos):
 
 
 def move_sl_to_entry(exchange):
-    """Shift stop-loss to entry price once price moves 1R in favor."""
+    """Shift stop-loss to entry once price moves the original risk."""
     positions = positions_snapshot(exchange)
     for pos in positions:
         pair = pos.get("pair")
@@ -371,7 +371,7 @@ def move_sl_to_entry(exchange):
         sl = pos.get("sl")
         if not (pair and side and entry and sl):
             continue
-        risk = entry - sl if side == "buy" else sl - entry
+        risk = abs(entry - sl)
         if risk <= 0:
             continue
         symbol = to_ccxt_symbol(pair)
@@ -381,10 +381,7 @@ def move_sl_to_entry(exchange):
         except Exception as e:
             logger.warning("move_sl_to_entry fetch_ticker error for %s: %s", pair, e)
             continue
-        moved = (
-            price - entry >= risk if side == "buy" else entry - price >= risk
-        )
-        if not moved:
+        if abs(price - entry) < risk:
             continue
         try:
             orders = exchange.fetch_open_orders(symbol)
@@ -405,31 +402,12 @@ def move_sl_to_entry(exchange):
         ]
         if not stop_orders:
             continue
-        try:
-            priced = [
-                (
-                    o,
-                    float(
-                        o.get("stopPrice")
-                        or (o.get("info") or {}).get("stopPrice")
-                        or o.get("price")
-                        or 0
-                    ),
-                )
-                for o in stop_orders
-            ]
-        except Exception as e:
-            logger.warning("move_sl_to_entry price parse error for %s: %s", pair, e)
-            continue
-        sl_order = (
-            min(priced, key=lambda x: x[1])
-            if side == "buy"
-            else max(priced, key=lambda x: x[1])
-        )
-        sl_order_id = sl_order[0].get("id")
-        if sl_order_id:
+        for o in stop_orders:
+            oid = o.get("id")
+            if not oid:
+                continue
             try:
-                exchange.cancel_order(sl_order_id, symbol)
+                exchange.cancel_order(oid, symbol)
             except Exception as e:
                 logger.warning("move_sl_to_entry cancel error for %s: %s", pair, e)
         exit_side = "sell" if side == "buy" else "buy"
