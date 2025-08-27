@@ -31,11 +31,11 @@ logger = logging.getLogger(__name__)
 
 # Cache for OHLCV data by timeframe
 CACHE_M15: Dict[str, pd.DataFrame] = {}
+CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
-CACHE_D1: Dict[str, pd.DataFrame] = {}
 LOCK_M15 = Lock()
+LOCK_H1 = Lock()
 LOCK_H4 = Lock()
-LOCK_D1 = Lock()
 
 
 def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict:
@@ -172,8 +172,8 @@ def coin_payload(exchange, symbol: str) -> Dict:
     payload = {
         "pair": norm_pair_symbol(symbol),
         "m15": build_15m(m15),
+        "h1": _snap_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
         "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
-        "d1": _snap_with_cache(exchange, symbol, "1d", CACHE_D1, LOCK_D1),
         "funding": funding_snapshot(exchange, symbol),
         "oi": open_interest_snapshot(exchange, symbol),
         "cvd": cvd_snapshot(exchange, symbol),
@@ -246,8 +246,8 @@ def build_payload(
                 logger.warning("coin_payload failed for %s: %s", sym, e)
     eth_symbol = pair_to_symbol("ETHUSDT")
     eth = {
+        "h1": _snap_with_cache(exchange, eth_symbol, "1h", CACHE_H1, LOCK_H1),
         "h4": _snap_with_cache(exchange, eth_symbol, "4h", CACHE_H4, LOCK_H4),
-        "d1": _snap_with_cache(exchange, eth_symbol, "1d", CACHE_D1, LOCK_D1),
     }
     return drop_empty(
         {
