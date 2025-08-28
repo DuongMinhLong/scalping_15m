@@ -222,8 +222,9 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         if not (isinstance(entry, (int, float)) and isinstance(sl, (int, float))):
             continue
         dist = entry - sl
-        tp1_def = entry + dist
-        tp2_def = entry + dist
+        tp1_def = entry + 1.0 * dist   # TP1 = 1R
+        tp2_def = entry + 1.5 * dist   # TP2 = 1.5R
+
         if not (isinstance(tp1, (int, float)) and tp1 != entry):
             tp1 = tp1_def
         if not (isinstance(tp2, (int, float)) and tp2 != entry):
