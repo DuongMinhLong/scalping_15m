@@ -222,9 +222,9 @@ def test_place_sl_tp(side, exit_side):
             "BTC/USDT",
             "TAKE_PROFIT_MARKET",
             exit_side,
-            5.0,
             None,
-            {"stopPrice": 4, "reduceOnly": True},
+            None,
+            {"stopPrice": 4, "closePosition": True},
         ),
     ]
 
@@ -289,9 +289,9 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             "BTC/USDT",
             "TAKE_PROFIT_MARKET",
             "sell",
-            5.0,
             None,
-            {"stopPrice": 1.3, "reduceOnly": True},
+            None,
+            {"stopPrice": 1.3, "closePosition": True},
         ),
     ]
 

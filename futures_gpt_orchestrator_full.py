@@ -144,9 +144,9 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
             symbol,
             "TAKE_PROFIT_MARKET",
             exit_side,
-            qty * 0.5,
             None,
-            {"stopPrice": tp3, "reduceOnly": True},
+            None,
+            {**params_close, "stopPrice": tp3},
         )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():

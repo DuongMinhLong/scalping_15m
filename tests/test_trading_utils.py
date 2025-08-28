@@ -51,7 +51,7 @@ def test_enrich_tp_qty_defaults(monkeypatch):
     acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90, "tp3": 150}]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
     assert res[0]["tp1"] == 110
-    assert res[0]["tp2"] == 110
+    assert res[0]["tp2"] == 115
     assert res[0]["tp3"] == 150
 
 
@@ -68,4 +68,4 @@ def test_enrich_tp_qty_sets_tp3_when_missing(monkeypatch):
     monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
     acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90}]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
-    assert res[0]["tp3"] == 110
+    assert res[0]["tp3"] == 115
