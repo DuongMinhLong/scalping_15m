@@ -209,7 +209,10 @@ def infer_side(entry: float, sl: float, tp: Optional[float]) -> Optional[str]:
 
 
 def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[Dict[str, Any]]:
-    """Compute qty and default TP1/TP2/TP3 levels for each action."""
+    """Compute qty for each action, requiring TP1/TP2/TP3 from the model.
+
+    Actions missing any TP level are skipped.
+    """
 
     out: List[Dict[str, Any]] = []
     for a in acts:
@@ -219,19 +222,14 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         tp2 = a.get("tp2")
         tp3 = a.get("tp3")
         risk = a.get("risk")
-        if not (isinstance(entry, (int, float)) and isinstance(sl, (int, float))):
+        if not (
+            isinstance(entry, (int, float))
+            and isinstance(sl, (int, float))
+            and isinstance(tp1, (int, float))
+            and isinstance(tp2, (int, float))
+            and isinstance(tp3, (int, float))
+        ):
             continue
-        dist = entry - sl
-        tp1_def = entry + 1.0 * dist   # TP1 = 1R
-        tp2_def = entry + 1.5 * dist   # TP2 = 1.5R
-
-        if not (isinstance(tp1, (int, float)) and tp1 != entry):
-            tp1 = tp1_def
-        if not (isinstance(tp2, (int, float)) and tp2 != entry):
-            tp2 = tp2_def
-        tp3_def = tp2_def
-        if not (isinstance(tp3, (int, float)) and tp3 != entry):
-            tp3 = tp3_def
         a["tp1"] = rfloat(tp1, 8)
         a["tp2"] = rfloat(tp2, 8)
         a["tp3"] = rfloat(tp3, 8)

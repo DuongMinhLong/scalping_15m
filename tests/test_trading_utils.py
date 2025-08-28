@@ -37,7 +37,7 @@ def test_parse_mini_actions_handles_close():
     assert res["close_partial"] == [{"pair": "LTCUSDT", "pct": 25.0}]
 
 
-def test_enrich_tp_qty_defaults(monkeypatch):
+def test_enrich_tp_qty_keeps_tps(monkeypatch):
     ex = types.SimpleNamespace(
         market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
     )
@@ -48,14 +48,16 @@ def test_enrich_tp_qty_defaults(monkeypatch):
         lambda capital, rf, entry, sl, step, max_lev, contract: 1,
     )
     monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
-    acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90, "tp3": 150}]
+    acts = [
+        {"pair": "BTCUSDT", "entry": 100, "sl": 90, "tp1": 110, "tp2": 115, "tp3": 150}
+    ]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
     assert res[0]["tp1"] == 110
     assert res[0]["tp2"] == 115
     assert res[0]["tp3"] == 150
 
 
-def test_enrich_tp_qty_sets_tp3_when_missing(monkeypatch):
+def test_enrich_tp_qty_skips_when_tp_missing(monkeypatch):
     ex = types.SimpleNamespace(
         market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
     )
@@ -66,6 +68,6 @@ def test_enrich_tp_qty_sets_tp3_when_missing(monkeypatch):
         lambda capital, rf, entry, sl, step, max_lev, contract: 1,
     )
     monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
-    acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90}]
+    acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90, "tp1": 110}]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
-    assert res[0]["tp3"] == 115
+    assert res == []
