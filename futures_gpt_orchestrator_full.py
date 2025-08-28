@@ -458,12 +458,12 @@ def live_loop(
         except Exception:
             logger.exception("run_job error")
 
-    def cancel_job():
-        logger.info("Scheduled stale order cancel check")
-        try:
-            cancel_unpositioned_limits(ex)
-        except Exception:
-            logger.exception("cancel_job error")
+    # def cancel_job():
+    #     logger.info("Scheduled stale order cancel check")
+    #     try:
+    #         cancel_unpositioned_limits(ex)
+    #     except Exception:
+    #         logger.exception("cancel_job error")
 
     def limit_job():
         logger.info("Scheduled SL/TP placement check")
@@ -472,19 +472,19 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
 
-    def move_sl_job():
-        logger.info("Scheduled move SL to entry check")
-        try:
-            move_sl_to_entry(ex)
-        except Exception:
-            logger.exception("move_sl_job error")
+    # def move_sl_job():
+    #     logger.info("Scheduled move SL to entry check")
+    #     try:
+    #         move_sl_to_entry(ex)
+    #     except Exception:
+    #         logger.exception("move_sl_job error")
 
     scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
 
     # Các job còn lại chạy theo interval
-    scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
+    # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
-    scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
+    # scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
     scheduler.start()
