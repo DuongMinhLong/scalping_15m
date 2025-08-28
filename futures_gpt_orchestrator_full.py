@@ -91,11 +91,10 @@ def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
         logger.warning("cancel_all_orders_for_pair unlink error %s: %s", fp, e)
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
-    """Place stop-loss and single take-profit orders as close-all market."""
+def _place_sl_tp(exchange, symbol, side, qty1, qty2, sl, tp1, tp2, tp3):
+    """Đặt SL và 3 TP (tp1 20%, tp2 30%, tp3 phần còn lại)."""
 
     exit_side = "sell" if side == "buy" else "buy"
-    params = {"closePosition": True}
 
     # To avoid hitting Binance's max stop order limit, cancel any existing
     # close-position stop orders before placing new ones.
@@ -113,21 +112,43 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
             logger.warning("_place_sl_tp cancel_order error for %s: %s", symbol, e)
 
     try:
+        # Stop-loss closes toàn bộ vị thế
         exchange.create_order(
             symbol,
             "STOP_MARKET",
             exit_side,
             None,
             None,
-            {**params, "stopPrice": sl},
+            {"closePosition": True, "stopPrice": sl},
         )
+        # TP1: chốt 20%
+        if qty1 > 0:
+            exchange.create_order(
+                symbol,
+                "TAKE_PROFIT_MARKET",
+                exit_side,
+                qty1,
+                None,
+                {"reduceOnly": True, "stopPrice": tp1},
+            )
+        # TP2: chốt 30%
+        if qty2 > 0:
+            exchange.create_order(
+                symbol,
+                "TAKE_PROFIT_MARKET",
+                exit_side,
+                qty2,
+                None,
+                {"reduceOnly": True, "stopPrice": tp2},
+            )
+        # TP3: đóng phần còn lại
         exchange.create_order(
             symbol,
             "TAKE_PROFIT_MARKET",
             exit_side,
             None,
             None,
-            {**params, "stopPrice": tp1},
+            {"closePosition": True, "stopPrice": tp3},
         )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
@@ -206,7 +227,11 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             entry = c.get("entry")
             sl = c.get("sl")
             tp1 = c.get("tp1")
+            tp2 = c.get("tp2")
+            tp3 = c.get("tp3")
             qty = c.get("qty")
+            qty1 = c.get("qty1")
+            qty2 = c.get("qty2")
             if side not in ("buy", "sell") or pair in pos_pairs_live:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
@@ -223,8 +248,12 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "side": side,
                         "limit": entry,
                         "qty": qty,
+                        "qty1": qty1,
+                        "qty2": qty2,
                         "sl": sl,
                         "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
                     }
                 ),
                 folder=str(LIMIT_ORDER_DIR),
@@ -236,7 +265,11 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "entry": entry,
                     "sl": sl,
                     "tp1": tp1,
+                    "tp2": tp2,
+                    "tp3": tp3,
                     "qty": qty,
+                    "qty1": qty1,
+                    "qty2": qty2,
                     "entry_id": entry_order.get("id"),
                 }
             )
@@ -252,12 +285,10 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     return {"ts": stamp, **result}
 
 
-def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
-    """Cancel stale limit orders for pairs without positions and delete their JSON files."""
+def cancel_unpositioned_limits(exchange):
+    """Cancel all limit orders for pairs without positions and delete their JSON files."""
 
-    logger.info(
-        "Checking for stale limit orders older than %s seconds", max_age_sec
-    )
+    logger.info("Checking for any open limit orders to cancel")
     try:
         # Suppress CCXT warning when fetching all open orders without a symbol
         exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
@@ -271,7 +302,6 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
         return
 
     pos_pairs = get_open_position_pairs(exchange)
-    now_ms = time.time() * 1000
     for o in orders or []:
         try:
             if o.get("reduceOnly") or (o.get("type") or "").lower() != "limit":
@@ -279,12 +309,6 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
             symbol = o.get("symbol") or (o.get("info") or {}).get("symbol")
             pair = _norm_pair_from_symbol(symbol)
             if pair in pos_pairs:
-                continue
-            ts = o.get("timestamp") or (o.get("info") or {}).get("updateTime") or (o.get("info") or {}).get("time")
-            if ts is None:
-                continue
-            age_sec = (now_ms - float(ts)) / 1000.0
-            if age_sec < max_age_sec:
                 continue
             try:
                 exchange.cancel_order(o.get("id"), symbol)
@@ -315,10 +339,23 @@ def add_sl_tp_from_json(exchange):
         pair = (data.get("pair") or "").upper()
         order_id = data.get("order_id")
         side = data.get("side")
-        qty = data.get("qty")
+        qty1 = data.get("qty1")
+        qty2 = data.get("qty2")
         sl = data.get("sl")
         tp1 = data.get("tp1")
-        if not (pair and order_id and side and qty and sl and tp1):
+        tp2 = data.get("tp2")
+        tp3 = data.get("tp3")
+        if not (
+            pair
+            and order_id
+            and side
+            and sl
+            and tp1
+            and tp2
+            and tp3
+            and qty1 is not None
+            and qty2 is not None
+        ):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
         try:
@@ -329,7 +366,7 @@ def add_sl_tp_from_json(exchange):
         status = (o.get("status") or "").lower()
         if status != "closed":
             continue
-        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1)
+        _place_sl_tp(exchange, ccxt_sym, side, float(qty1), float(qty2), sl, tp1, tp2, tp3)
         try:
             fp.unlink()
         except Exception as e:
@@ -361,79 +398,13 @@ def _get_position_info(pos):
     return symbol, side, entry_price, amt_val
 
 
-def move_sl_to_entry(exchange):
-    """Shift stop-loss to entry once price moves the original risk."""
-    positions = positions_snapshot(exchange)
-    for pos in positions:
-        pair = pos.get("pair")
-        side = pos.get("side")
-        entry = pos.get("entry")
-        sl = pos.get("sl")
-        if not (pair and side and entry and sl):
-            continue
-        risk = abs(entry - sl)
-        if risk <= 0:
-            continue
-        symbol = to_ccxt_symbol(pair)
-        try:
-            ticker = exchange.fetch_ticker(symbol)
-            price = float(ticker.get("last") or ticker.get("close"))
-        except Exception as e:
-            logger.warning("move_sl_to_entry fetch_ticker error for %s: %s", pair, e)
-            continue
-        if abs(price - entry) < risk:
-            continue
-        try:
-            orders = exchange.fetch_open_orders(symbol)
-        except Exception as e:
-            logger.warning(
-                "move_sl_to_entry fetch_open_orders error for %s: %s", pair, e
-            )
-            continue
-        stop_orders = [
-            o
-            for o in orders
-            if o.get("reduceOnly")
-            and (
-                o.get("stopPrice")
-                or (o.get("info") or {}).get("stopPrice")
-                or o.get("price")
-            )
-        ]
-        if not stop_orders:
-            continue
-        for o in stop_orders:
-            oid = o.get("id")
-            if not oid:
-                continue
-            try:
-                exchange.cancel_order(oid, symbol)
-            except Exception as e:
-                logger.warning("move_sl_to_entry cancel error for %s: %s", pair, e)
-        exit_side = "sell" if side == "buy" else "buy"
-        try:
-            exchange.create_order(
-                symbol,
-                "STOP_MARKET",
-                exit_side,
-                None,
-                None,
-                {"closePosition": True, "stopPrice": entry},
-            )
-        except Exception as e:
-            logger.warning("move_sl_to_entry create_order error for %s: %s", pair, e)
-
-
 def live_loop(
     limit: int = 30,
-    cancel_interval: int = 600,   # cancel stale orders (10m)
     add_interval: int = 60,       # SL/TP add (1m)
-    move_sl_interval: int = 300,  # move SL to entry (5m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
     - Orchestrator job runs at minutes 0, 15, 30 and 45.
-    - Cancel stale limit orders mỗi 10 phút.
     - Check để add SL/TP mỗi 1 phút.
     """
 
@@ -441,11 +412,9 @@ def live_loop(
         raise RuntimeError("APScheduler is required for live_loop scheduling")
 
     logger.info(
-        "Starting live loop limit=%s cancel_interval=%s add_interval=%s move_sl_interval=%s",
+        "Starting live loop limit=%s add_interval=%s",
         limit,
-        cancel_interval,
         add_interval,
-        move_sl_interval,
     )
 
     ex = make_exchange()
@@ -458,13 +427,6 @@ def live_loop(
         except Exception:
             logger.exception("run_job error")
 
-    def cancel_job():
-        logger.info("Scheduled stale order cancel check")
-        try:
-            cancel_unpositioned_limits(ex)
-        except Exception:
-            logger.exception("cancel_job error")
-
     def limit_job():
         logger.info("Scheduled SL/TP placement check")
         try:
@@ -472,19 +434,8 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
 
-    def move_sl_job():
-        logger.info("Scheduled move SL to entry check")
-        try:
-            move_sl_to_entry(ex)
-        except Exception:
-            logger.exception("move_sl_job error")
-
     scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
-
-    # Các job còn lại chạy theo interval
-    scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
-    scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
     scheduler.start()

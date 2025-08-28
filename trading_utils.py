@@ -200,11 +200,23 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         risk = a.get("risk")
         if not (isinstance(entry, (int, float)) and isinstance(sl, (int, float))):
             continue
-        dist = entry - sl
-        tp1_def = entry + 2 * dist
-        if not (isinstance(tp1, (int, float)) and tp1 != entry):
-            tp1 = tp1_def
+
+        # GPT trả về tp1 được xem là TP cuối cùng (tp3)
+        tp_final = a.get("tp1")
+        dist = abs(entry - sl)
+        side = "buy" if entry > sl else "sell"
+        tp1 = entry + dist if side == "buy" else entry - dist
+        tp2 = entry + 1.5 * dist if side == "buy" else entry - 1.5 * dist
+        tp3 = (
+            float(tp_final)
+            if isinstance(tp_final, (int, float)) and tp_final != entry
+            else (entry + 2 * dist if side == "buy" else entry - 2 * dist)
+        )
+
         a["tp1"] = rfloat(tp1, 8)
+        a["tp2"] = rfloat(tp2, 8)
+        a["tp3"] = rfloat(tp3, 8)
+
         rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.01
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
@@ -218,11 +230,19 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         qty = calc_qty(capital, rf, float(entry), float(sl), step, max_lev, contract)
         if qty <= 0:
             continue  # bỏ qua nếu khối lượng bằng 0
+
+        qty1 = round_step(qty * 0.2, step)
+        qty2 = round_step(qty * 0.3, step)
+        qty3 = round_step(max(qty - qty1 - qty2, 0), step)
+
         a["qty"] = rfloat(qty, 8)
+        a["qty1"] = rfloat(qty1, 8)
+        a["qty2"] = rfloat(qty2, 8)
+        a["qty3"] = rfloat(qty3, 8)
         a["risk"] = rfloat(rf, 6)
-        side = infer_side(float(entry), float(sl), float(tp1))
-        if side in {"buy", "sell"}:
-            a["side"] = side
+        side_inferred = infer_side(float(entry), float(sl), float(tp3))
+        if side_inferred in {"buy", "sell"}:
+            a["side"] = side_inferred
             out.append(a)
     return out
 

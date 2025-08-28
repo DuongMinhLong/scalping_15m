@@ -124,7 +124,11 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
                     "entry": 1,
                     "sl": 0.9,
                     "tp1": 1.1,
+                    "tp2": 1.2,
+                    "tp3": 1.3,
                     "qty": 1,
+                    "qty1": 0.2,
+                    "qty2": 0.3,
                 }
             ]
         },
@@ -145,7 +149,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2)
+    orch._place_sl_tp(ex, "BTC/USDT", side, 2, 3, 0.9, 1.1, 1.2, 1.3)
     assert ex.cancelled == []
     assert ex.orders == [
         (
@@ -154,7 +158,23 @@ def test_place_sl_tp(side, exit_side):
             exit_side,
             None,
             None,
-            {"stopPrice": 1, "closePosition": True},
+            {"stopPrice": 0.9, "closePosition": True},
+        ),
+        (
+            "BTC/USDT",
+            "TAKE_PROFIT_MARKET",
+            exit_side,
+            2,
+            None,
+            {"stopPrice": 1.1, "reduceOnly": True},
+        ),
+        (
+            "BTC/USDT",
+            "TAKE_PROFIT_MARKET",
+            exit_side,
+            3,
+            None,
+            {"stopPrice": 1.2, "reduceOnly": True},
         ),
         (
             "BTC/USDT",
@@ -162,7 +182,7 @@ def test_place_sl_tp(side, exit_side):
             exit_side,
             None,
             None,
-            {"stopPrice": 2, "closePosition": True},
+            {"stopPrice": 1.3, "closePosition": True},
         ),
     ]
 
@@ -174,9 +194,9 @@ class ExistingStopExchange(CaptureExchange):
 
 def test_place_sl_tp_cancels_existing():
     ex = ExistingStopExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 1, 2)
+    orch._place_sl_tp(ex, "BTC/USDT", "buy", 2, 3, 1, 2, 3, 4)
     assert ex.cancelled == [("old1", "BTC/USDT")]
-    assert len(ex.orders) == 2
+    assert len(ex.orders) == 4
 
 
 def test_add_sl_tp_from_json(tmp_path, monkeypatch):
@@ -189,8 +209,12 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         "side": "buy",
         "limit": 1,
         "qty": 10,
+        "qty1": 2,
+        "qty2": 3,
         "sl": 0.9,
         "tp1": 1.1,
+        "tp2": 1.2,
+        "tp3": 1.3,
     }
     (limit_dir / "BTCUSDT.json").write_text(json.dumps(data))
     ex = FilledExchange()
@@ -209,92 +233,26 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             "BTC/USDT",
             "TAKE_PROFIT_MARKET",
             "sell",
+            2,
             None,
-            None,
-            {"stopPrice": 1.1, "closePosition": True},
+            {"stopPrice": 1.1, "reduceOnly": True},
         ),
-    ]
-
-
-class BreakEvenExchange(CaptureExchange):
-    def __init__(self):
-        super().__init__()
-        self.cancelled = []
-
-    def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 100}]
-
-    def fetch_open_orders(self, symbol):
-        return [
-            {
-                "id": "sl1",
-                "symbol": symbol,
-                "reduceOnly": True,
-                "stopPrice": 90,
-            }
-        ]
-
-    def fetch_ticker(self, symbol):
-        return {"last": 110}
-
-    def cancel_order(self, oid, sym):
-        self.cancelled.append((oid, sym))
-
-
-def test_move_sl_to_entry(monkeypatch):
-    ex = BreakEvenExchange()
-    orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT")]
-    assert ex.orders == [
         (
             "BTC/USDT",
-            "STOP_MARKET",
+            "TAKE_PROFIT_MARKET",
+            "sell",
+            3,
+            None,
+            {"stopPrice": 1.2, "reduceOnly": True},
+        ),
+        (
+            "BTC/USDT",
+            "TAKE_PROFIT_MARKET",
             "sell",
             None,
             None,
-            {"stopPrice": 100, "closePosition": True},
-        )
-    ]
-
-
-class BreakEvenExchangeShort(CaptureExchange):
-    def __init__(self):
-        super().__init__()
-        self.cancelled = []
-
-    def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": -1, "entryPrice": 100}]
-
-    def fetch_open_orders(self, symbol):
-        return [
-            {
-                "id": "sl1",
-                "symbol": symbol,
-                "reduceOnly": True,
-                "stopPrice": 110,
-            }
-        ]
-
-    def fetch_ticker(self, symbol):
-        return {"last": 90}
-
-    def cancel_order(self, oid, sym):
-        self.cancelled.append((oid, sym))
-
-
-def test_move_sl_to_entry_short(monkeypatch):
-    ex = BreakEvenExchangeShort()
-    orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT")]
-    assert ex.orders == [
-        (
-            "BTC/USDT",
-            "STOP_MARKET",
-            "buy",
-            None,
-            None,
-            {"stopPrice": 100, "closePosition": True},
-        )
+            {"stopPrice": 1.3, "closePosition": True},
+        ),
     ]
 
 
@@ -323,7 +281,7 @@ def test_cancel_unpositioned_limits_clears_json(tmp_path, monkeypatch):
     (tmp_path / "BTCUSDT.json").write_text("{}")
     ex = StaleExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
-    orch.cancel_unpositioned_limits(ex, max_age_sec=0)
+    orch.cancel_unpositioned_limits(ex)
     assert ex.cancelled == [("1", "BTC/USDT")]
     assert not (tmp_path / "BTCUSDT.json").exists()
 
@@ -333,6 +291,6 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     (tmp_path / "BTCUSDT.json").write_text("{}")
     ex = StaleExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"BTCUSDT"})
-    orch.cancel_unpositioned_limits(ex, max_age_sec=0)
+    orch.cancel_unpositioned_limits(ex)
     assert ex.cancelled == []
     assert (tmp_path / "BTCUSDT.json").exists()
