@@ -14,7 +14,8 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
     """Parse MINI model JSON output into open/close instructions.
 
     Returns a dict with keys ``coins``, ``close_all`` and ``close_partial``.
-    ``coins`` contains dicts with trading instructions (entry, SL, TP1, risk).
+    ``coins`` contains dicts with trading instructions (entry, SL, TP1, TP2,
+    risk).
     ``close_all`` is a list of {"pair"} dicts. ``close_partial`` is a list of
     {"pair", "pct"} dicts where ``pct`` is a percentage between 0 and 100.
     Invalid entries are ignored silently.
@@ -35,6 +36,7 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
         entry = item.get("entry")
         sl = item.get("sl")
         tp1 = item.get("tp1")
+        tp2 = item.get("tp2")
         risk = item.get("risk")
         conf = item.get("conf")
         rr = item.get("rr")
@@ -42,6 +44,7 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             entry = float(entry) if entry is not None else None
             sl = float(sl) if sl is not None else None
             tp1 = float(tp1) if tp1 not in (None, "") else None
+            tp2 = float(tp2) if tp2 not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
             conf = float(conf) if conf not in (None, "") else None
             rr = float(rr) if rr not in (None, "") else None
@@ -52,15 +55,23 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
         if risk is not None and not (0 < risk < 1):
             continue
         side = "buy" if entry > sl else "sell"
-        if tp1 is not None:
-            if (side == "buy" and tp1 <= entry) or (side == "sell" and tp1 >= entry):
-                continue
+        if tp1 is not None and (
+            (side == "buy" and tp1 <= entry)
+            or (side == "sell" and tp1 >= entry)
+        ):
+            continue
+        if tp2 is not None and (
+            (side == "buy" and tp2 <= entry)
+            or (side == "sell" and tp2 >= entry)
+        ):
+            continue
         coins.append(
             {
                 "pair": pair,
                 "entry": entry,
                 "sl": sl,
                 "tp1": tp1,
+                "tp2": tp2,
                 "risk": risk,
                 "conf": conf,
                 "rr": rr,
@@ -190,21 +201,26 @@ def infer_side(entry: float, sl: float, tp: Optional[float]) -> Optional[str]:
 
 
 def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[Dict[str, Any]]:
-    """Compute qty and default TP1 (2R) for each action."""
+    """Compute qty and default TP1/TP2 for each action."""
 
     out: List[Dict[str, Any]] = []
     for a in acts:
         entry = a.get("entry")
         sl = a.get("sl")
         tp1 = a.get("tp1")
+        tp2 = a.get("tp2")
         risk = a.get("risk")
         if not (isinstance(entry, (int, float)) and isinstance(sl, (int, float))):
             continue
         dist = entry - sl
-        tp1_def = entry + 2 * dist
+        tp1_def = entry + dist
+        tp2_def = entry + 1.5 * dist
         if not (isinstance(tp1, (int, float)) and tp1 != entry):
             tp1 = tp1_def
+        if not (isinstance(tp2, (int, float)) and tp2 != entry):
+            tp2 = tp2_def
         a["tp1"] = rfloat(tp1, 8)
+        a["tp2"] = rfloat(tp2, 8)
         rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.01
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
