@@ -152,12 +152,15 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
             )
         else:
             raise
+    except Exception as e:  # pragma: no cover - log unexpected create_order errors
+        logger.error("_place_sl_tp create_order error for %s: %s", symbol, e)
 
 
 # Default limit increased to 30 to expand the number of coins processed
 def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
 
+    start_time = time.time()
     logger.info("Run start live=%s limit=%s", run_live, limit)
     load_env()
     nano_model, mini_model = get_models()
@@ -255,41 +258,50 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 or tp3 is None
             ):
                 continue
-            ccxt_sym = to_ccxt_symbol(pair)
-            cancel_all_orders_for_pair(ex, ccxt_sym, pair)
-            entry_order = ex.create_order(
-                ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
-            )
-            save_text(
-                f"{pair}.json",
-                dumps_min(
+            try:
+                ccxt_sym = to_ccxt_symbol(pair)
+                cancel_all_orders_for_pair(ex, ccxt_sym, pair)
+                entry_order = ex.create_order(
+                    ccxt_sym,
+                    "limit",
+                    side,
+                    qty,
+                    entry,
+                    {"reduceOnly": False},
+                )
+                save_text(
+                    f"{pair}.json",
+                    dumps_min(
+                        {
+                            "pair": pair,
+                            "order_id": entry_order.get("id"),
+                            "side": side,
+                            "limit": entry,
+                            "qty": qty,
+                            "sl": sl,
+                            "tp1": tp1,
+                            "tp2": tp2,
+                            "tp3": tp3,
+                        }
+                    ),
+                    folder=str(LIMIT_ORDER_DIR),
+                )
+                placed.append(
                     {
                         "pair": pair,
-                        "order_id": entry_order.get("id"),
                         "side": side,
-                        "limit": entry,
-                        "qty": qty,
+                        "entry": entry,
                         "sl": sl,
                         "tp1": tp1,
                         "tp2": tp2,
                         "tp3": tp3,
+                        "qty": qty,
+                        "entry_id": entry_order.get("id"),
                     }
-                ),
-                folder=str(LIMIT_ORDER_DIR),
-            )
-            placed.append(
-                {
-                    "pair": pair,
-                    "side": side,
-                    "entry": entry,
-                    "sl": sl,
-                    "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
-                    "qty": qty,
-                    "entry_id": entry_order.get("id"),
-                }
-            )
+                )
+            except Exception as e:
+                logger.error("Order placement failed for %s: %s", pair, e)
+                continue
 
     result = {
         "live": run_live,
@@ -299,6 +311,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     }
     save_text(f"{stamp}_orders.json", dumps_min(result))
     logger.info("Run complete: placed %d orders", len(placed))
+    logger.info("Run finished in %.2f seconds", time.time() - start_time)
     return {"ts": stamp, **result}
 
 
