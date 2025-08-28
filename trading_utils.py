@@ -209,7 +209,7 @@ def infer_side(entry: float, sl: float, tp: Optional[float]) -> Optional[str]:
 
 
 def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[Dict[str, Any]]:
-    """Compute qty and default TP1/TP2 for each action."""
+    """Compute qty and default TP1/TP2/TP3 levels for each action."""
 
     out: List[Dict[str, Any]] = []
     for a in acts:
@@ -228,10 +228,12 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
             tp1 = tp1_def
         if not (isinstance(tp2, (int, float)) and tp2 != entry):
             tp2 = tp2_def
+        tp3_def = tp2_def
+        if not (isinstance(tp3, (int, float)) and tp3 != entry):
+            tp3 = tp3_def
         a["tp1"] = rfloat(tp1, 8)
         a["tp2"] = rfloat(tp2, 8)
-        if isinstance(tp3, (int, float)) and tp3 != entry:
-            a["tp3"] = rfloat(tp3, 8)
+        a["tp3"] = rfloat(tp3, 8)
         rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.01
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)

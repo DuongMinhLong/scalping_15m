@@ -8,6 +8,7 @@ import pytest
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 os.environ.setdefault("OPENAI_API_KEY", "test")
 import futures_gpt_orchestrator_full as orch  # noqa: E402
+import trading_utils  # noqa: E402
 
 
 class DummyExchange:
@@ -142,6 +143,49 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
     assert ex.cancelled == [("old1", "BTC/USDT"), ("old2", "BTC/USDT")]
     assert len(ex.orders) == 1
     assert not (tmp_path / "BTCUSDT.json").exists()
+
+
+def test_run_places_order_without_tp3(monkeypatch, tmp_path):
+    class Ex:
+        def __init__(self):
+            self.orders = []
+
+        def fetch_balance(self):
+            return {"total": {"USDT": 1000}}
+
+        def fetch_open_orders(self, symbol):
+            return []
+
+        def cancel_order(self, oid, symbol):
+            pass
+
+        def create_order(self, symbol, typ, side, qty, price, params):
+            self.orders.append((symbol, typ, side, qty, price, params))
+            return {"id": "new"}
+
+        def market(self, symbol):
+            return {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
+
+    ex = Ex()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"coins": ["dummy"]})
+    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
+    monkeypatch.setattr(orch, "extract_content", lambda r: "")
+    monkeypatch.setattr(orch, "parse_mini_actions", lambda text: {"coins": [{"pair": "BTCUSDT", "entry": 1, "sl": 0.9, "tp1": 1.1}]})
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
+    monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    monkeypatch.setattr(trading_utils, "qty_step", lambda e, s: 1)
+    monkeypatch.setattr(trading_utils, "calc_qty", lambda *a, **k: 1)
+    monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
+
+    orch.run(run_live=True, ex=ex)
+
+    assert len(ex.orders) == 1
 
 
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
