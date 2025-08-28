@@ -157,6 +157,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
 
     if run_live:
         cancel_unpositioned_limits(ex)
+        remove_unmapped_limit_files(ex)
 
     try:
         bal = ex.fetch_balance()
@@ -313,6 +314,35 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
+
+
+def remove_unmapped_limit_files(exchange) -> None:
+    """Remove limit-order JSON files without an open order or position."""
+
+    try:
+        exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
+        orders = exchange.fetch_open_orders()
+    except Exception as e:
+        logger.warning("remove_unmapped_limit_files fetch_open_orders error: %s", e)
+        orders = []
+
+    open_pairs = {
+        _norm_pair_from_symbol(
+            o.get("symbol") or (o.get("info") or {}).get("symbol")
+        )
+        for o in orders or []
+        if (o.get("type") or "").lower() == "limit"
+    }
+    pos_pairs = get_open_position_pairs(exchange)
+
+    for fp in LIMIT_ORDER_DIR.glob("*.json"):
+        pair = fp.stem.upper()
+        if pair in open_pairs or pair in pos_pairs:
+            continue
+        try:
+            fp.unlink()
+        except Exception as e:  # pragma: no cover - filesystem issues
+            logger.warning("remove_unmapped_limit_files unlink error %s: %s", fp, e)
 
 
 def add_sl_tp_from_json(exchange):

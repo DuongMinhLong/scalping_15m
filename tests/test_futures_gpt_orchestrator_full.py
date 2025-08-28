@@ -354,3 +354,37 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
     assert ex.cancelled == []
     assert (tmp_path / "BTCUSDT.json").exists()
+
+
+class NoOrderExchange:
+    def __init__(self):
+        self.options = {}
+
+    def fetch_open_orders(self):
+        return []
+
+
+class OpenOrderExchange:
+    def __init__(self):
+        self.options = {}
+
+    def fetch_open_orders(self):
+        return [{"symbol": "BTC/USDT", "type": "limit"}]
+
+
+def test_remove_unmapped_limit_files_clears_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+    ex = NoOrderExchange()
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    orch.remove_unmapped_limit_files(ex)
+    assert not (tmp_path / "BTCUSDT.json").exists()
+
+
+def test_remove_unmapped_limit_files_skips_when_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+    ex = OpenOrderExchange()
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    orch.remove_unmapped_limit_files(ex)
+    assert (tmp_path / "BTCUSDT.json").exists()
