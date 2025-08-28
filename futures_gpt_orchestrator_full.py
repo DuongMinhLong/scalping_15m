@@ -180,6 +180,29 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))
 
+    time_info = payload_full.get("time", {})
+    if time_info.get("asia_block"):
+        logger.info("Asia session blocked, exiting run")
+        save_text(
+            f"{stamp}_orders.json",
+            dumps_min(
+                {
+                    "live": run_live,
+                    "capital": capital,
+                    "coins": [],
+                    "placed": [],
+                    "reason": "asia_block",
+                }
+            ),
+        )
+        return {
+            "ts": stamp,
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "placed": [],
+        }
+
     if not payload_full.get("coins"):
         logger.info("No coins in payload, exiting run")
         save_text(
