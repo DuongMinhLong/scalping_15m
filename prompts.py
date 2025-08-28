@@ -19,7 +19,7 @@ PROMPT_USER_MINI = (
     "### Quy tắc vào lệnh: "
     "- Trend filter: Long chỉ khi close15m > EMA20 và H1/H4 trend = up. Short chỉ khi close15m < EMA20 và H1/H4 trend = down. "
     "- Momentum filter: Long cần RSI(15m) > 50 và MACD histogram dương. Short cần RSI(15m) < 50 và MACD histogram âm. "
-    "- Funding filter: Nếu bars_to ≤ 2 và funding rate bất lợi → bỏ kèo (hoặc close nếu chưa đạt ≥0.8R). "
+    "- Funding filter: Chỉ xét nếu còn ≤60 phút tới kỳ funding; Long bất lợi khi rate>0, Short bất lợi khi rate<0. "
     "- Orderbook filter: imbalance ≥ 0.15 theo hướng lệnh và spread ≤ 0.1%. "
     "- ATR/SL filter: SL phải ≥ 0.6 × ATR(15m). "
     "- Session filter: Asia yêu cầu conf ≥ 0.8, US yêu cầu conf ≥ 0.7. Nếu mins_to_close ≤ 15 và tín hiệu yếu → bỏ. "
