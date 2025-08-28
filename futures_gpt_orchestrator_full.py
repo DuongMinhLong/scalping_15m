@@ -91,8 +91,8 @@ def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
         logger.warning("cancel_all_orders_for_pair unlink error %s: %s", fp, e)
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2):
-    """Place stop-loss and two take-profit orders for partial closes."""
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
+    """Place stop-loss and three take-profit orders for partial closes."""
 
     exit_side = "sell" if side == "buy" else "buy"
     params_close = {"closePosition": True}
@@ -123,19 +123,27 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2):
         )
         exchange.create_order(
             symbol,
-            "TAKE_PROFIT_MARKET",
+            "TAKE_PROFIT",
             exit_side,
             qty * 0.2,
-            None,
+            tp1,
             {"stopPrice": tp1, "reduceOnly": True},
+        )
+        exchange.create_order(
+            symbol,
+            "TAKE_PROFIT",
+            exit_side,
+            qty * 0.3,
+            tp2,
+            {"stopPrice": tp2, "reduceOnly": True},
         )
         exchange.create_order(
             symbol,
             "TAKE_PROFIT_MARKET",
             exit_side,
-            qty * 0.3,
+            qty * 0.5,
             None,
-            {"stopPrice": tp2, "reduceOnly": True},
+            {"stopPrice": tp3, "reduceOnly": True},
         )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
@@ -216,8 +224,13 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             sl = c.get("sl")
             tp1 = c.get("tp1")
             tp2 = c.get("tp2")
+            tp3 = c.get("tp3")
             qty = c.get("qty")
-            if side not in ("buy", "sell") or pair in pos_pairs_live:
+            if (
+                side not in ("buy", "sell")
+                or pair in pos_pairs_live
+                or tp3 is None
+            ):
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
             cancel_all_orders_for_pair(ex, ccxt_sym, pair)
@@ -236,6 +249,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "sl": sl,
                         "tp1": tp1,
                         "tp2": tp2,
+                        "tp3": tp3,
                     }
                 ),
                 folder=str(LIMIT_ORDER_DIR),
@@ -248,6 +262,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "sl": sl,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "tp3": tp3,
                     "qty": qty,
                     "entry_id": entry_order.get("id"),
                 }
@@ -360,7 +375,8 @@ def add_sl_tp_from_json(exchange):
         sl = data.get("sl")
         tp1 = data.get("tp1")
         tp2 = data.get("tp2")
-        if not (pair and order_id and side and qty and sl and tp1 and tp2):
+        tp3 = data.get("tp3")
+        if not (pair and order_id and side and qty and sl and tp1 and tp2 and tp3):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
         try:
@@ -371,7 +387,7 @@ def add_sl_tp_from_json(exchange):
         status = (o.get("status") or "").lower()
         if status != "closed":
             continue
-        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2)
+        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
         try:
             fp.unlink()
         except Exception as e:
