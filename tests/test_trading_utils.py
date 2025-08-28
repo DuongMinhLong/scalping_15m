@@ -22,13 +22,13 @@ def test_to_ccxt_symbol_with_exchange_markets():
 def test_parse_mini_actions_handles_close():
     text = (
         "{"
-        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp1":1.05,"conf":8,"rr":2.5}],'
+        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.1,"conf":8,"rr":2.5}],'
         '"close_all":[{"pair":"ETHUSDT"}],'
         '"close_partial":[{"pair":"LTCUSDT","pct":25}]}'
     )
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
-    assert res["coins"][0]["tp1"] == 1.05
+    assert res["coins"][0]["tp"] == 1.1
     assert res["coins"][0]["conf"] == 8.0
     assert res["coins"][0]["rr"] == 2.5
     assert res["close_all"] == [{"pair": "ETHUSDT"}]
