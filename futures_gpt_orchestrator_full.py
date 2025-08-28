@@ -310,7 +310,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     return {"ts": stamp, **result}
 
 
-def cancel_unpositioned_limits(exchange, max_age_sec: int = 600):
+def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
     """Cancel stale limit orders for pairs without positions and delete their JSON files."""
 
     logger.info(
