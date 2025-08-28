@@ -145,7 +145,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
     assert not (tmp_path / "BTCUSDT.json").exists()
 
 
-def test_run_places_order_without_tp3(monkeypatch, tmp_path):
+def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     class Ex:
         def __init__(self):
             self.orders = []
@@ -174,7 +174,11 @@ def test_run_places_order_without_tp3(monkeypatch, tmp_path):
     monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"coins": ["dummy"]})
     monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
     monkeypatch.setattr(orch, "extract_content", lambda r: "")
-    monkeypatch.setattr(orch, "parse_mini_actions", lambda text: {"coins": [{"pair": "BTCUSDT", "entry": 1, "sl": 0.9, "tp1": 1.1}]})
+    monkeypatch.setattr(
+        orch,
+        "parse_mini_actions",
+        lambda text: {"coins": [{"pair": "BTCUSDT", "entry": 1, "sl": 0.9, "tp1": 1.1}]},
+    )
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
     monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
@@ -185,7 +189,7 @@ def test_run_places_order_without_tp3(monkeypatch, tmp_path):
 
     orch.run(run_live=True, ex=ex)
 
-    assert len(ex.orders) == 1
+    assert len(ex.orders) == 0
 
 
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
