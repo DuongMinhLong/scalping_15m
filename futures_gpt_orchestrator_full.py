@@ -94,14 +94,13 @@ def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
         logger.warning("cancel_all_orders_for_pair unlink error %s: %s", fp, e)
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
-    """Place stop-loss and three take-profit orders for partial closes."""
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp1):
+    """Place stop-loss and a single take-profit order."""
 
     exit_side = "sell" if side == "buy" else "buy"
     params_close = {"closePosition": True}
 
-    # To avoid hitting Binance's max stop order limit, cancel any existing
-    # close-position stop orders before placing new ones.
+    # Cancel existing close-position/reduce-only orders before placing new ones
     try:
         orders = exchange.fetch_open_orders(symbol)
     except Exception as e:  # pragma: no cover - network or exchange error
@@ -126,27 +125,11 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2, tp3):
         )
         exchange.create_order(
             symbol,
-            "TAKE_PROFIT",
-            exit_side,
-            qty * 0.2,
-            tp1,
-            {"stopPrice": tp1, "reduceOnly": True},
-        )
-        exchange.create_order(
-            symbol,
-            "TAKE_PROFIT",
-            exit_side,
-            qty * 0.3,
-            tp2,
-            {"stopPrice": tp2, "reduceOnly": True},
-        )
-        exchange.create_order(
-            symbol,
             "TAKE_PROFIT_MARKET",
             exit_side,
             None,
             None,
-            {**params_close, "stopPrice": tp3},
+            {**params_close, "stopPrice": tp1},
         )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
@@ -249,13 +232,11 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             entry = c.get("entry")
             sl = c.get("sl")
             tp1 = c.get("tp1")
-            tp2 = c.get("tp2")
-            tp3 = c.get("tp3")
             qty = c.get("qty")
             if (
                 side not in ("buy", "sell")
                 or pair in pos_pairs_live
-                or tp3 is None
+                or tp1 is None
             ):
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
@@ -275,8 +256,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                             "qty": qty,
                             "sl": sl,
                             "tp1": tp1,
-                            "tp2": tp2,
-                            "tp3": tp3,
                         }
                     ),
                     folder=str(LIMIT_ORDER_DIR),
@@ -288,8 +267,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "entry": entry,
                         "sl": sl,
                         "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
                         "qty": qty,
                         "entry_id": entry_order.get("id"),
                     }
@@ -405,9 +382,7 @@ def add_sl_tp_from_json(exchange):
         qty = data.get("qty")
         sl = data.get("sl")
         tp1 = data.get("tp1")
-        tp2 = data.get("tp2")
-        tp3 = data.get("tp3")
-        if not (pair and order_id and side and qty and sl and tp1 and tp2 and tp3):
+        if not (pair and order_id and side and qty and sl and tp1):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
         try:
@@ -418,7 +393,7 @@ def add_sl_tp_from_json(exchange):
         status = (o.get("status") or "").lower()
         if status != "closed":
             continue
-        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
+        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1)
         try:
             fp.unlink()
         except Exception as e:
