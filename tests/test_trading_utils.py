@@ -53,3 +53,19 @@ def test_enrich_tp_qty_defaults(monkeypatch):
     assert res[0]["tp1"] == 110
     assert res[0]["tp2"] == 110
     assert res[0]["tp3"] == 150
+
+
+def test_enrich_tp_qty_sets_tp3_when_missing(monkeypatch):
+    ex = types.SimpleNamespace(
+        market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
+    )
+    monkeypatch.setattr(trading_utils, "qty_step", lambda e, s: 1)
+    monkeypatch.setattr(
+        trading_utils,
+        "calc_qty",
+        lambda capital, rf, entry, sl, step, max_lev, contract: 1,
+    )
+    monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
+    acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90}]
+    res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
+    assert res[0]["tp3"] == 110
