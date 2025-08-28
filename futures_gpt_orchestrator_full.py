@@ -20,6 +20,9 @@ from typing import Any, Dict, List
 
 from ccxt.base.errors import OperationRejected  # type: ignore
 
+logging.getLogger("apscheduler").propagate = False
+logging.getLogger("apscheduler").disabled = True
+
 try:  # pragma: no cover - optional dependency
     from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore
     from apscheduler.triggers.cron import CronTrigger  # type: ignore
