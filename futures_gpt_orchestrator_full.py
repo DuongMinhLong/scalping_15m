@@ -164,15 +164,15 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     stamp = ts_prefix()
 
     if run_live:
-        max_orders = env_int("MAX_OPEN_ORDERS", 10)
+        max_pos = env_int("MAX_OPEN_POSITIONS", 10)
         try:
-            current_orders = len(ex.fetch_open_orders())
+            current_pos = len(get_open_position_pairs(ex))
         except Exception as e:
-            logger.warning("run fetch_open_orders error: %s", e)
-            current_orders = 0
-        if current_orders >= max_orders:
+            logger.warning("run get_open_position_pairs error: %s", e)
+            current_pos = 0
+        if current_pos >= max_pos:
             logger.info(
-                "Open orders %s >= max %s, exiting run", current_orders, max_orders
+                "Open positions %s >= max %s, exiting run", current_pos, max_pos
             )
             save_text(
                 f"{stamp}_orders.json",
@@ -182,7 +182,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "capital": capital,
                         "coins": [],
                         "placed": [],
-                        "reason": "max_orders",
+                        "reason": "max_positions",
                     }
                 ),
             )
