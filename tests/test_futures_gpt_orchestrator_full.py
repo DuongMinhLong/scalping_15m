@@ -191,13 +191,10 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     assert len(ex.orders) == 0
 
 
-def test_run_respects_max_open_orders(monkeypatch):
+def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
             return {"total": {"USDT": 1000}}
-
-        def fetch_open_orders(self):
-            return list(range(11))
 
     ex = Ex()
     monkeypatch.setattr(orch, "load_env", lambda: None)
@@ -207,6 +204,7 @@ def test_run_respects_max_open_orders(monkeypatch):
     monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
     monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
     monkeypatch.setattr(orch, "env_int", lambda k, d: 10)
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {f"p{i}" for i in range(11)})
     build_called = {}
 
     def fake_build_payload(*a, **k):
