@@ -161,33 +161,42 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
         capital = 0.0
     logger.info("Capital available: %.2f USDT", capital)
 
-    payload_full = build_payload(ex, limit)
     stamp = ts_prefix()
+
+    if run_live:
+        max_orders = env_int("MAX_OPEN_ORDERS", 10)
+        try:
+            current_orders = len(ex.fetch_open_orders())
+        except Exception as e:
+            logger.warning("run fetch_open_orders error: %s", e)
+            current_orders = 0
+        if current_orders >= max_orders:
+            logger.info(
+                "Open orders %s >= max %s, exiting run", current_orders, max_orders
+            )
+            save_text(
+                f"{stamp}_orders.json",
+                dumps_min(
+                    {
+                        "live": run_live,
+                        "capital": capital,
+                        "coins": [],
+                        "placed": [],
+                        "reason": "max_orders",
+                    }
+                ),
+            )
+            return {
+                "ts": stamp,
+                "live": run_live,
+                "capital": capital,
+                "coins": [],
+                "placed": [],
+            }
+
+    payload_full = build_payload(ex, limit)
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))
-
-    time_info = payload_full.get("time", {})
-    if time_info.get("asia_block"):
-        logger.info("Asia session blocked, exiting run")
-        save_text(
-            f"{stamp}_orders.json",
-            dumps_min(
-                {
-                    "live": run_live,
-                    "capital": capital,
-                    "coins": [],
-                    "placed": [],
-                    "reason": "asia_block",
-                }
-            ),
-        )
-        return {
-            "ts": stamp,
-            "live": run_live,
-            "capital": capital,
-            "coins": [],
-            "placed": [],
-        }
 
     if not payload_full.get("coins"):
         logger.info("No coins in payload, exiting run")
