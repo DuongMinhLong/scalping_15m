@@ -15,10 +15,8 @@ import pandas as pd
 from env_utils import compact, compact_price, drop_empty, human_num, rfloat, rprice
 from exchange_utils import (
     fetch_ohlcv_df,
-    load_usdtm,
     orderbook_snapshot,
     cache_top_by_qv,
-    top_by_market_cap,
     funding_snapshot,
     open_interest_snapshot,
     cvd_snapshot,
@@ -193,58 +191,28 @@ def build_payload(
     exchange,
     limit: int = 10,
     exclude_pairs: Set[str] | None = None,
-    mc_ttl: float = 3600,
     min_qv: float = 10_000_000,
 ) -> Dict:
     """Build the payload used by the orchestrator with time and bias info.
 
-    Only markets with quote volume above ``min_qv`` are considered when
-    selecting trading symbols.
+    Symbols are selected purely by 24h quote volume. Only markets with
+    quote volume above ``min_qv`` are considered, and any pairs already in
+    ``exclude_pairs`` or with existing positions are skipped.
     """
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
     volumes = cache_top_by_qv(exchange, limit=limit, min_qv=min_qv)
-    mc_list = top_by_market_cap(max(limit, 200), ttl=mc_ttl)
-    mc_bases = set(mc_list)
-    markets = load_usdtm(exchange)
-    base_map: Dict[str, str] = {}
-    for sym, m in markets.items():
-        b = m.get("base") or ""
-        base_map[strip_numeric_prefix(b)] = sym
 
     symbols: List[str] = []
-    used_bases: Set[str] = set()
-
     for s in volumes:
         pair = norm_pair_symbol(s)
-        base = strip_numeric_prefix(pair[:-4])
-        if (
-            pair in exclude_pairs
-            or pair in pos_pairs
-            or base not in mc_bases
-            or base in used_bases
-        ):
-            continue
-        symbols.append(s)
-        used_bases.add(base)
-        if len(symbols) >= limit:
-            break
-
-    for base in mc_list:
-        if len(symbols) >= limit:
-            break
-        if base in used_bases:
-            continue
-        sym = base_map.get(base)
-        if sym is None:
-            continue
-        pair = norm_pair_symbol(sym)
         if pair in exclude_pairs or pair in pos_pairs:
             continue
-        symbols.append(sym)
-        used_bases.add(base)
+        symbols.append(s)
+        if len(symbols) >= limit:
+            break
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
