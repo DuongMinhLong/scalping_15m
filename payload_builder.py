@@ -194,13 +194,18 @@ def build_payload(
     limit: int = 10,
     exclude_pairs: Set[str] | None = None,
     mc_ttl: float = 3600,
+    min_qv: float = 10_000_000,
 ) -> Dict:
-    """Build the payload used by the orchestrator with time and bias info."""
+    """Build the payload used by the orchestrator with time and bias info.
+
+    Only markets with quote volume above ``min_qv`` are considered when
+    selecting trading symbols.
+    """
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    volumes = cache_top_by_qv(exchange, limit=limit)
+    volumes = cache_top_by_qv(exchange, limit=limit, min_qv=min_qv)
     mc_list = top_by_market_cap(max(limit, 200), ttl=mc_ttl)
     mc_bases = set(mc_list)
     markets = load_usdtm(exchange)

@@ -135,3 +135,39 @@ def test_cache_top_by_qv_caches_results(monkeypatch, tmp_path):
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     assert data[0]["base"] == "AAA"
+
+
+def test_cache_top_by_qv_filters_by_min_qv(tmp_path):
+    class DummyExchange:
+        def load_markets(self):
+            return {
+                "AAA/USDT:USDT": {
+                    "symbol": "AAA/USDT:USDT",
+                    "linear": True,
+                    "swap": True,
+                    "quote": "USDT",
+                    "active": True,
+                    "base": "AAA",
+                },
+                "BBB/USDT:USDT": {
+                    "symbol": "BBB/USDT:USDT",
+                    "linear": True,
+                    "swap": True,
+                    "quote": "USDT",
+                    "active": True,
+                    "base": "BBB",
+                },
+            }
+
+        def fetch_tickers(self):
+            return {
+                "AAA/USDT:USDT": {"quoteVolume": 6_000_000},
+                "BBB/USDT:USDT": {"quoteVolume": 1_000_000},
+            }
+
+    ex = DummyExchange()
+    path = tmp_path / "vol.json"
+    res = exchange_utils.cache_top_by_qv(
+        ex, limit=2, ttl=0, path=str(path), min_qv=5_000_000
+    )
+    assert res == ["AAA/USDT:USDT"]

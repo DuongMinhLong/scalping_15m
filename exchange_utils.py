@@ -93,6 +93,7 @@ def cache_top_by_qv(
     *,
     ttl: float = 3600,
     path: str = "cache/top_volume.json",
+    min_qv: float = 0.0,
 ) -> List[str]:
     """Return top symbols by quote volume using a JSON cache.
 
@@ -124,12 +125,14 @@ def cache_top_by_qv(
 
     scored: Dict[str, Dict] = {}
     for sym, m in markets.items():
-        qv = (tickers.get(sym) or {}).get("quoteVolume") or 0
+        qv = float((tickers.get(sym) or {}).get("quoteVolume") or 0)
+        if qv < min_qv:
+            continue
         base = m.get("base") or ""
         norm = strip_numeric_prefix(base)
         info = scored.get(norm)
-        if not info or float(qv) > info["qv"]:
-            scored[norm] = {"symbol": sym, "qv": float(qv), "base": norm}
+        if not info or qv > info["qv"]:
+            scored[norm] = {"symbol": sym, "qv": qv, "base": norm}
 
     top = sorted(scored.values(), key=lambda x: x["qv"], reverse=True)[:limit]
 
