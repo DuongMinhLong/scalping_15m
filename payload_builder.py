@@ -17,6 +17,7 @@ from exchange_utils import (
     fetch_ohlcv_df,
     orderbook_snapshot,
     cache_top_by_qv,
+    top_by_market_cap,
     funding_snapshot,
     open_interest_snapshot,
     cvd_snapshot,
@@ -189,20 +190,23 @@ def build_payload(
 ) -> Dict:
     """Build the payload used by the orchestrator with time and bias info.
 
-    Symbols are selected purely by 24h quote volume. Only markets with
-    quote volume above ``min_qv`` are considered, and any pairs already in
-    ``exclude_pairs`` or with existing positions are skipped.
+    Symbols are limited to top market cap coins and prioritised by 24h
+    quote volume. Only markets with quote volume above ``min_qv`` are
+    considered, and any pairs already in ``exclude_pairs`` or with
+    existing positions are skipped.
     """
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    volumes = cache_top_by_qv(exchange, limit=limit, min_qv=min_qv)
+    mcap_bases = {strip_numeric_prefix(b) for b in top_by_market_cap(limit=200)}
+    volumes = cache_top_by_qv(exchange, limit=limit * 5, min_qv=min_qv)
 
     symbols: List[str] = []
     for s in volumes:
         pair = norm_pair_symbol(s)
-        if pair in exclude_pairs or pair in pos_pairs:
+        base = strip_numeric_prefix(pair[:-4]) if pair.endswith("USDT") else pair
+        if base not in mcap_bases or pair in exclude_pairs or pair in pos_pairs:
             continue
         symbols.append(s)
         if len(symbols) >= limit:
