@@ -36,6 +36,34 @@ from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
 
 exchange_lock = threading.Lock()
 
+_pending_orders: List[Dict[str, Any]] = []
+_expiry_thread_started = False
+
+
+def _expiry_worker(exchange):
+    """Background worker to cancel expired limit orders."""
+    while True:
+        now = time.time()
+        for od in _pending_orders[:]:
+            if now >= od["deadline"]:
+                try:
+                    call_locked(exchange.cancel_order, od["id"], od["symbol"])
+                except Exception:
+                    pass
+                _pending_orders.remove(od)
+        time.sleep(60)
+
+
+def schedule_cancel(exchange, order_id: str, symbol: str, expiry: float) -> None:
+    """Schedule ``order_id`` for cancellation after ``expiry`` seconds."""
+    global _expiry_thread_started
+    if not order_id or not isinstance(expiry, (int, float)) or expiry <= 0:
+        return
+    _pending_orders.append({"id": order_id, "symbol": symbol, "deadline": time.time() + float(expiry)})
+    if not _expiry_thread_started:
+        threading.Thread(target=_expiry_worker, args=(exchange,), daemon=True).start()
+        _expiry_thread_started = True
+
 
 def call_locked(func, *args, **kwargs):
     """Call ``func`` with ``exchange_lock`` held to ensure thread safety."""
@@ -188,13 +216,14 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
             sl = c.get("sl")
             tp = c.get("tp")
             qty = c.get("qty")
+            expiry = c.get("expiry")
             if side not in ("buy", "sell"):
                 continue
             if pair in pos_pairs_live:
                 continue
-            placed.append({"pair": pair, "side": side, "entry": entry, "sl": sl, "tp": tp, "qty": qty})
+            placed.append({"pair": pair, "side": side, "entry": entry, "sl": sl, "tp": tp, "qty": qty, "expiry": expiry})
             ccxt_sym = to_ccxt_symbol(pair)
-            call_locked(
+            order = call_locked(
                 ex.create_order,
                 ccxt_sym,
                 "limit",
@@ -203,6 +232,8 @@ def run(run_live: bool = False, limit: int = 20) -> Dict[str, Any]:
                 entry,
                 {"reduceOnly": False},
             )
+            order_id = order.get("id") if isinstance(order, dict) else None
+            schedule_cancel(ex, order_id, ccxt_sym, expiry)
 
     result = {"live": run_live, "capital": capital, "coins": coins, "placed": placed}
     save_text(f"{stamp}_orders.json", dumps_min(result))

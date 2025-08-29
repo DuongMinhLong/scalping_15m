@@ -25,14 +25,16 @@ def parse_mini_actions(text: str) -> List[Dict[str, Any]]:
         sl = item.get("sl")
         tp = item.get("tp")
         risk = item.get("risk")
+        expiry = item.get("expiry")
         try:
             entry = float(entry) if entry is not None else None
             sl = float(sl) if sl is not None else None
             tp = float(tp) if tp not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
+            expiry = float(expiry) if expiry not in (None, "") else None
         except Exception:
             continue
-        out.append({"pair": pair, "entry": entry, "sl": sl, "tp": tp, "risk": risk})
+        out.append({"pair": pair, "entry": entry, "sl": sl, "tp": tp, "risk": risk, "expiry": expiry})
     return out
 
 
