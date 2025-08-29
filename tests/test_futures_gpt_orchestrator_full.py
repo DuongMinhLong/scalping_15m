@@ -191,6 +191,42 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     assert len(ex.orders) == 0
 
 
+def test_run_respects_max_open_orders(monkeypatch):
+    class Ex:
+        def fetch_balance(self):
+            return {"total": {"USDT": 1000}}
+
+        def fetch_open_orders(self):
+            return list(range(11))
+
+    ex = Ex()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+    monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
+    monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
+    monkeypatch.setattr(orch, "env_int", lambda k, d: 10)
+    build_called = {}
+
+    def fake_build_payload(*a, **k):
+        build_called["called"] = True
+        return {}
+
+    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
+
+    res = orch.run(run_live=True, ex=ex)
+
+    assert not build_called.get("called")
+    assert res == {
+        "ts": "ts",
+        "live": True,
+        "capital": 1000.0,
+        "coins": [],
+        "placed": [],
+    }
+
+
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()

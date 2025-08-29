@@ -231,13 +231,17 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     assert res["orderbook"]["sp"] == 0.1
 
 
-def test_time_payload_asia_block():
+def test_time_payload_sessions():
     from datetime import datetime, timezone
 
     now = datetime(2024, 1, 1, 2, 0, tzinfo=timezone.utc)
     info = payload_builder.time_payload(now)
-    assert info["session"] == "asia" and not info["asia_block"]
+    assert info["session"] == "asia" and "asia_block" not in info
+
+    now = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    info = payload_builder.time_payload(now)
+    assert info["session"] == "europe"
 
     now = datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc)
     info = payload_builder.time_payload(now)
-    assert info["session"] == "us" and info["asia_block"]
+    assert info["session"] == "us"

@@ -53,15 +53,10 @@ def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict
 
 
 def time_payload(now: datetime | None = None) -> Dict:
-    """Return current UTC time info and trading session details.
-
-    Includes ``asia_block`` flag to indicate 16h–01h UTC when no trades
-    should be opened.
-    """
+    """Return current UTC time info and trading session details."""
 
     now = now or datetime.now(timezone.utc)
     utc_hour = now.hour
-    asia_block = utc_hour >= 16 or utc_hour < 1
     if 0 <= utc_hour < 8:
         session = "asia"
         end = now.replace(hour=8, minute=0, second=0, microsecond=0)
@@ -79,7 +74,6 @@ def time_payload(now: datetime | None = None) -> Dict:
         "utc_hour": utc_hour,
         "session": session,
         "mins_to_close": mins_to_close,
-        "asia_block": asia_block,
     }
 
 
