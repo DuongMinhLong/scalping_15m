@@ -2,6 +2,7 @@ import json
 import os
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -418,3 +419,29 @@ def test_remove_unmapped_limit_files_skips_when_order(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.remove_unmapped_limit_files(ex)
     assert (tmp_path / "BTCUSDT.json").exists()
+
+
+def test_cancel_expired_limit_orders(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    data = {
+        "pair": "BTCUSDT",
+        "order_id": "1",
+        "expiry": 1,
+        "ts": time.time() - 2,
+    }
+    (tmp_path / "BTCUSDT.json").write_text(json.dumps(data))
+
+    class Ex:
+        def __init__(self):
+            self.cancelled = []
+
+        def fetch_order(self, oid, sym):
+            return {"status": "open"}
+
+        def cancel_order(self, oid, sym):
+            self.cancelled.append((oid, sym))
+
+    ex = Ex()
+    orch.cancel_expired_limit_orders(ex)
+    assert ex.cancelled == [("1", "BTC/USDT")]
+    assert not (tmp_path / "BTCUSDT.json").exists()

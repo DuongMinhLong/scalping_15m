@@ -245,6 +245,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 entry_order = ex.create_order(
                     ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
                 )
+                expiry = c.get("expiry")
                 save_text(
                     f"{pair}.json",
                     dumps_min(
@@ -256,6 +257,8 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                             "qty": qty,
                             "sl": sl,
                             "tp1": tp1,
+                            "expiry": expiry,
+                            "ts": time.time(),
                         }
                     ),
                     folder=str(LIMIT_ORDER_DIR),
@@ -269,6 +272,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "tp1": tp1,
                         "qty": qty,
                         "entry_id": entry_order.get("id"),
+                        "expiry": expiry,
                     }
                 )
             except Exception as e:
@@ -337,6 +341,55 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
+
+
+def cancel_expired_limit_orders(exchange) -> None:
+    """Cancel limit orders whose custom expiry has passed."""
+
+    now = time.time()
+    for fp in LIMIT_ORDER_DIR.glob("*.json"):
+        try:
+            data = json.loads(fp.read_text())
+        except Exception as e:
+            logger.warning("cancel_expired_limit_orders read error %s: %s", fp, e)
+            continue
+        expiry = data.get("expiry")
+        ts = data.get("ts")
+        order_id = data.get("order_id")
+        pair = data.get("pair")
+        if not all([expiry, ts, order_id, pair]):
+            continue
+        try:
+            if now - float(ts) < float(expiry):
+                continue
+        except Exception:
+            continue
+        symbol = to_ccxt_symbol(pair)
+        try:
+            order = exchange.fetch_order(order_id, symbol)
+        except Exception:
+            order = None
+        status = (order or {}).get("status")
+        if status == "closed":
+            try:
+                fp.unlink()
+            except Exception as e:
+                logger.warning(
+                    "cancel_expired_limit_orders unlink closed error %s: %s", fp, e
+                )
+            continue
+        try:
+            exchange.cancel_order(order_id, symbol)
+        except Exception as e:
+            logger.warning(
+                "cancel_expired_limit_orders cancel error for %s: %s", pair, e
+            )
+        try:
+            fp.unlink()
+        except Exception as e:
+            logger.warning(
+                "cancel_expired_limit_orders unlink error %s: %s", fp, e
+            )
 
 
 def remove_unmapped_limit_files(exchange) -> None:
@@ -546,6 +599,18 @@ def live_loop(
                 "SL/TP placement check finished in %.2fs", time.time() - start
             )
 
+    def expiry_job():
+        start = time.time()
+        logger.info("Scheduled limit expiry check")
+        try:
+            cancel_expired_limit_orders(ex)
+        except Exception:
+            logger.exception("expiry_job error")
+        finally:
+            logger.info(
+                "Limit expiry check finished in %.2fs", time.time() - start
+            )
+
     # def move_sl_job():
     #     logger.info("Scheduled move SL to entry check")
     #     try:
@@ -558,6 +623,7 @@ def live_loop(
     # Các job còn lại chạy theo interval
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
+    scheduler.add_job(expiry_job, "interval", seconds=60)
     # scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
