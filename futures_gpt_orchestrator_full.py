@@ -245,7 +245,13 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 entry_order = ex.create_order(
                     ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
                 )
-                expiry = c.get("expiry")
+                expiry_min = c.get("expiry")
+                try:
+                    expiry_sec = (
+                        float(expiry_min) * 60 if expiry_min not in (None, "") else None
+                    )
+                except Exception:
+                    expiry_sec = None
                 save_text(
                     f"{pair}.json",
                     dumps_min(
@@ -257,7 +263,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                             "qty": qty,
                             "sl": sl,
                             "tp1": tp1,
-                            "expiry": expiry,
+                            "expiry": expiry_sec,
                             "ts": time.time(),
                         }
                     ),
@@ -272,7 +278,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "tp1": tp1,
                         "qty": qty,
                         "entry_id": entry_order.get("id"),
-                        "expiry": expiry,
+                        "expiry": expiry_min,
                     }
                 )
             except Exception as e:
