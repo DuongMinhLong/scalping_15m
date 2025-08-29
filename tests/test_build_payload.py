@@ -18,6 +18,7 @@ def test_build_payload_uses_top_volume(monkeypatch):
         "cache_top_by_qv",
         lambda ex, limit=10, min_qv=0: ["AAA/USDT:USDT", "BBB/USDT:USDT"],
     )
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["AAA", "BBB"])
     monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2, min_qv=0)
@@ -34,6 +35,7 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
         "cache_top_by_qv",
         lambda ex, limit=10, min_qv=0: ["1000PEPE/USDT:USDT"],
     )
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["PEPE"])
     monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=1, min_qv=0)
@@ -54,6 +56,7 @@ def test_build_payload_skips_positions(monkeypatch):
             "AAA/USDT:USDT",
         ],
     )
+    monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["CCC", "BBB", "AAA"])
     monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2, min_qv=0)
