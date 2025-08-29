@@ -173,8 +173,10 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
 
     exclude_pairs = exclude_pairs or set()
     logger.info("exclude_pairs count: %d", len(exclude_pairs))
-    # Prioritize symbols with the largest 24h percentage change
-    symbols_raw = top_by_24h_change(exchange, limit * 3)
+    # Restrict 24h change candidates to high-volume symbols
+    vol_set = set(top_by_qv(exchange, limit * 5))
+    change_raw = top_by_24h_change(exchange, limit * 10)
+    symbols_raw = [s for s in change_raw if s in vol_set]
     symbols: List[str] = []
     excluded_change = 0
     for s in symbols_raw:
@@ -186,7 +188,8 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
         if len(symbols) >= limit:
             break
     logger.info(
-        "24h change candidates: %d, excluded: %d, selected: %d",
+        "24h change candidates: %d, volume filtered: %d, excluded: %d, selected: %d",
+        len(change_raw),
         len(symbols_raw),
         excluded_change,
         len(symbols),
