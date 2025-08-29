@@ -14,8 +14,8 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
     """Parse MINI model JSON output into open/close instructions.
 
     Returns a dict with keys ``coins``, ``close_all`` and ``close_partial``.
-    ``coins`` contains dicts with trading instructions (entry, SL, TP1, risk).
-    ``close_all`` is a list of {"pair"} dicts. ``close_partial`` is a list of
+    ``coins`` contains dicts with trading instructions (entry, SL, TP1, risk,
+    expiry). ``close_all`` is a list of {"pair"} dicts. ``close_partial`` is a list of
     {"pair", "pct"} dicts where ``pct`` is a percentage between 0 and 100.
     Invalid entries are ignored silently.
     """
@@ -34,10 +34,11 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             continue
         entry = item.get("entry")
         sl = item.get("sl")
-        tp1 = item.get("tp1")
+        tp1 = item.get("tp1") if item.get("tp1") is not None else item.get("tp")
         risk = item.get("risk")
         conf = item.get("conf")
         rr = item.get("rr")
+        expiry = item.get("expiry")
         try:
             entry = float(entry) if entry is not None else None
             sl = float(sl) if sl is not None else None
@@ -45,6 +46,7 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             risk = float(risk) if risk not in (None, "") else None
             conf = float(conf) if conf not in (None, "") else None
             rr = float(rr) if rr not in (None, "") else None
+            expiry = float(expiry) if expiry not in (None, "") else None
         except Exception:
             continue
         if None in (entry, sl) or entry == sl:
@@ -66,6 +68,7 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
                 "risk": risk,
                 "conf": conf,
                 "rr": rr,
+                "expiry": expiry,
             }
         )
 

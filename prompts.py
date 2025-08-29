@@ -25,7 +25,7 @@ PROMPT_USER_MINI = (
     "- Nếu mins_to_close ≤ 15 và tín hiệu yếu → bỏ. "
     "- Entry rule: Ưu tiên LIMIT pullback về EMA20/key level; nếu tín hiệu nến (pinbar/engulfing/doji/breakout) → đặt LIMIT tại 30-> 50% thân nến, không đuổi breakout nến 2–3. "
 
-    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp1\":0.0,\"conf\":0.0}]}. "
+    "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"risk\":0.0,\"expiry\":0}]}. "
     "Không có tín hiệu hợp lệ → {\"coins\":[]}. "
 
     "DATA:{payload}"
