@@ -387,6 +387,36 @@ def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     assert (tmp_path / "BTCUSDT.json").exists()
 
 
+class SecTimestampExchange:
+    def __init__(self):
+        self.options = {}
+        self.cancelled = []
+
+    def fetch_open_orders(self):
+        return [
+            {
+                "id": "1",
+                "symbol": "BTC/USDT",
+                "type": "limit",
+                "timestamp": time.time(),
+                "reduceOnly": False,
+            }
+        ]
+
+    def cancel_order(self, oid, symbol):
+        self.cancelled.append((oid, symbol))
+
+
+def test_cancel_unpositioned_limits_handles_second_timestamp(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
+    (tmp_path / "BTCUSDT.json").write_text("{}")
+    ex = SecTimestampExchange()
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
+    orch.cancel_unpositioned_limits(ex, max_age_sec=60)
+    assert ex.cancelled == []
+    assert (tmp_path / "BTCUSDT.json").exists()
+
+
 class NoOrderExchange:
     def __init__(self):
         self.options = {}

@@ -316,7 +316,7 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
         return
 
     pos_pairs = get_open_position_pairs(exchange)
-    now_ms = time.time() * 1000
+    now = time.time()
     for o in orders or []:
         try:
             if o.get("reduceOnly") or (o.get("type") or "").lower() != "limit":
@@ -325,10 +325,19 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
             pair = _norm_pair_from_symbol(symbol)
             if pair in pos_pairs:
                 continue
-            ts = o.get("timestamp") or (o.get("info") or {}).get("updateTime") or (o.get("info") or {}).get("time")
+            ts = (
+                o.get("timestamp")
+                or (o.get("info") or {}).get("updateTime")
+                or (o.get("info") or {}).get("time")
+            )
             if ts is None:
                 continue
-            age_sec = (now_ms - float(ts)) / 1000.0
+            try:
+                ts_val = float(ts)
+            except Exception:
+                continue
+            ts_sec = ts_val / 1000.0 if ts_val > 1e12 else ts_val
+            age_sec = now - ts_sec
             if age_sec < max_age_sec:
                 continue
             try:
