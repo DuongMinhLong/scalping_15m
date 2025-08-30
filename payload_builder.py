@@ -10,12 +10,21 @@ import logging
 import pandas as pd
 from threading import Lock
 
+import os
+
 from env_utils import compact, drop_empty, now_ms, rfloat
 from exchange_utils import (
     fetch_ohlcv_df,
     orderbook_snapshot,
     top_by_qv,
     top_by_24h_change,
+    funding_snapshot,
+    open_interest_snapshot,
+    long_short_ratio,
+    price_snapshot,
+    liquidation_snapshot,
+    market_snapshot,
+    position_snapshot,
 )
 from indicators import add_indicators, trend_lbl
 
@@ -23,6 +32,50 @@ from indicators import add_indicators, trend_lbl
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _env_float(key: str) -> float | None:
+    try:
+        val = os.getenv(key)
+        return float(val) if val is not None else None
+    except Exception:
+        return None
+
+
+def _env_int(key: str) -> int | None:
+    try:
+        val = os.getenv(key)
+        return int(val) if val is not None else None
+    except Exception:
+        return None
+
+
+def account_risk_config() -> Dict:
+    """Return account and risk settings from the environment."""
+
+    return drop_empty(
+        {
+            "leverage": _env_int("LEV"),
+            "risk_frac": _env_float("RISK_FRAC"),
+            "max_positions": _env_int("MAX_POSITIONS"),
+            "cooldown_mins": _env_int("COOLDOWN_MINS"),
+        }
+    )
+
+
+def bot_filters() -> Dict:
+    """Return optional bot filtering parameters from the environment."""
+
+    deny = os.getenv("DENY_SESSIONS")
+    deny_list = [s.strip() for s in deny.split(",") if s.strip()] if deny else None
+    return drop_empty(
+        {
+            "min_conf": _env_float("MIN_CONF"),
+            "min_rr": _env_float("MIN_RR"),
+            "skip_funding_abs_gt": _env_float("SKIP_FUNDING_ABS_GT"),
+            "skip_next_fund_mins_lte": _env_int("SKIP_NEXT_FUND_MINS_LTE"),
+            "deny_sessions": deny_list,
+        }
+    )
 
 
 def session_meta() -> Dict[str, int | str]:
@@ -151,6 +204,13 @@ def coin_payload(exchange, symbol: str) -> Dict:
         "h1": build_snap(df_h1),
         "h4": build_snap(df_h4),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
+        "funding": funding_snapshot(exchange, symbol),
+        "open_interest": open_interest_snapshot(exchange, symbol),
+        "lsr": long_short_ratio(exchange, symbol).get("lsr"),
+        "price": price_snapshot(exchange, symbol),
+        "liquidations": liquidation_snapshot(exchange, symbol, limit=200),
+        "contract": market_snapshot(exchange, symbol),
+        "position": position_snapshot(exchange, symbol),
     }
     return drop_empty(payload)
 
@@ -243,9 +303,15 @@ def build_payload(exchange, limit: int = 20, exclude_pairs: Set[str] | None = No
                 break
             multiplier *= 2
     coins = [coin_payload(exchange, s) for s in symbols]
-    return {
-        "time": {"now_utc": now_ms(), "session": session_meta()},
-        "eth": eth_bias(exchange),
-        "coins": [drop_empty(c) for c in coins],
-    }
+    btc_info = price_snapshot(exchange, "BTC/USDT")
+    return drop_empty(
+        {
+            "time": {"now_utc": now_ms(), "session": session_meta()},
+            "account": account_risk_config(),
+            "filters": bot_filters(),
+            "btc_px": btc_info.get("mark"),
+            "eth": eth_bias(exchange),
+            "coins": [drop_empty(c) for c in coins],
+        }
+    )
 

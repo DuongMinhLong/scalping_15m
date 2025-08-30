@@ -9,7 +9,7 @@ from typing import Dict, List
 import ccxt
 import pandas as pd
 
-from env_utils import rfloat
+from env_utils import drop_empty, now_ms, rfloat
 
 # Symbols to skip when building the market universe
 BLACKLIST_BASES = {"BTC", "BNB"}
@@ -104,27 +104,152 @@ def orderbook_snapshot(exchange: ccxt.Exchange, symbol: str, depth: int = 10) ->
         best_ask = float(asks[0][0])
         mid = (best_bid + best_ask) / 2.0
         spread = (best_ask - best_bid) / mid if mid > 0 else 0.0
-        bid_vol = sum(float(p) * float(a) for p, a in bids[:depth])
-        ask_vol = sum(float(p) * float(a) for p, a in asks[:depth])
-        den = (bid_vol + ask_vol) or 1.0
-        imb = (bid_vol - ask_vol) / den
+        bid_vol_1_5 = sum(float(p) * float(a) for p, a in bids[:5])
+        ask_vol_1_5 = sum(float(p) * float(a) for p, a in asks[:5])
+        den = (bid_vol_1_5 + ask_vol_1_5) or 1.0
+        imb = (bid_vol_1_5 - ask_vol_1_5) / den
         return {
             "spread": rfloat(spread, 6),
-            "bid_vol": rfloat(bid_vol, 6),
-            "ask_vol": rfloat(ask_vol, 6),
-            "imbalance": rfloat(imb, 6),
+            "bid_vol_1_5": rfloat(bid_vol_1_5, 6),
+            "ask_vol_1_5": rfloat(ask_vol_1_5, 6),
+            "imb": rfloat(imb, 6),
         }
     except Exception:
         return {}
 
 
-def liquidation_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 50) -> Dict:
-    """Return basic liquidation statistics or an empty dict if unsupported.
+def funding_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return funding rate and minutes until the next funding event."""
 
-    Binance does not implement ``fetchLiquidations`` in ccxt.  Previously this
-    raised a noisy warning for every symbol.  We guard against that here by
-    checking for support before attempting the call.
-    """
+    try:
+        fr = exchange.fetch_funding_rate(symbol)
+    except Exception:
+        return {}
+    rate = rfloat(fr.get("fundingRate"))
+    next_ts = fr.get("nextFundingTime")
+    mins = None
+    if isinstance(next_ts, (int, float)):
+        mins = max(0, int((float(next_ts) - now_ms()) / 60000))
+    return drop_empty({"rate": rate, "next_mins": mins})
+
+
+def open_interest_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return current open interest and optional 24h change."""
+
+    method = getattr(exchange, "fetch_open_interest_history", None)
+    if not callable(method):
+        return {}
+    try:
+        records = method(symbol, "1h", None, 25)
+    except Exception:
+        return {}
+    if not records:
+        return {}
+    last = records[-1]
+    oi = rfloat(last.get("openInterest"))
+    change = None
+    if len(records) > 24:
+        first = records[0]
+        try:
+            change = rfloat(float(last.get("openInterest")) - float(first.get("openInterest")))
+        except Exception:
+            change = None
+    return drop_empty({"oi": oi, "oi_chg_24h": change})
+
+
+def long_short_ratio(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return the global long/short account ratio if available."""
+
+    method = getattr(exchange, "fapiPublic_get_globalLongShortAccountRatio", None)
+    if not callable(method):
+        return {}
+    try:
+        market = exchange.market(symbol)
+        data = method({"symbol": market.get("id"), "period": "5m", "limit": 1})
+        item = data[-1] if data else None
+    except Exception:
+        return {}
+    if not item:
+        return {}
+    return drop_empty({"lsr": rfloat(item.get("longShortRatio"))})
+
+
+def price_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return mark and index prices when provided by the exchange."""
+
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+    except Exception:
+        return {}
+    info = ticker.get("info") or {}
+    mark = rfloat(info.get("markPrice") or ticker.get("mark"))
+    index = rfloat(info.get("indexPrice") or ticker.get("index"))
+    return drop_empty({"mark": mark, "index": index})
+
+
+def market_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return contract specification details for ``symbol``."""
+
+    try:
+        m = exchange.market(symbol)
+    except Exception:
+        return {}
+    tick_size = rfloat((m.get("precision") or {}).get("price"))
+    step_size = rfloat((m.get("precision") or {}).get("amount"))
+    min_qty = rfloat(((m.get("limits") or {}).get("amount") or {}).get("min"))
+    max_lev = rfloat(((m.get("limits") or {}).get("leverage") or {}).get("max") or (m.get("info") or {}).get("maxLeverage"))
+    maker = rfloat(m.get("maker"))
+    taker = rfloat(m.get("taker"))
+    return drop_empty(
+        {
+            "tick_size": tick_size,
+            "step_size": step_size,
+            "min_qty": min_qty,
+            "max_leverage": max_lev,
+            "maker_fee": maker,
+            "taker_fee": taker,
+        }
+    )
+
+
+def position_snapshot(exchange: ccxt.Exchange, symbol: str) -> Dict:
+    """Return current position state for ``symbol`` if any."""
+
+    try:
+        positions = exchange.fetch_positions([symbol])
+    except Exception:
+        try:
+            positions = exchange.fetch_positions()
+        except Exception:
+            return {}
+    for p in positions or []:
+        sym = p.get("symbol") or (p.get("info") or {}).get("symbol")
+        if sym != symbol:
+            continue
+        amt = (
+            p.get("contracts")
+            or p.get("amount")
+            or (p.get("info") or {}).get("positionAmt")
+            or 0
+        )
+        try:
+            amt = float(amt)
+        except Exception:
+            amt = 0.0
+        if abs(amt) <= 0:
+            return {}
+        side = "long" if amt > 0 else "short"
+        qty = rfloat(abs(amt))
+        avg = rfloat(p.get("entryPrice") or (p.get("info") or {}).get("entryPrice"))
+        upl = rfloat(
+            p.get("unrealizedPnl") or (p.get("info") or {}).get("unRealizedProfit")
+        )
+        return drop_empty({"in": True, "side": side, "qty": qty, "avg": avg, "unreal_pnl": upl})
+    return {}
+
+
+def liquidation_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 50) -> Dict:
+    """Return 24h liquidation statistics or an empty dict if unsupported."""
 
     if not getattr(exchange, "has", {}).get("fetchLiquidations"):
         return {}
@@ -148,8 +273,8 @@ def liquidation_snapshot(exchange: ccxt.Exchange, symbol: str, limit: int = 50) 
 
     den = (buy_vol + sell_vol) or 1.0
     return {
-        "buy_vol": rfloat(buy_vol, 6),
-        "sell_vol": rfloat(sell_vol, 6),
+        "liq_long_usd": rfloat(buy_vol, 6),
+        "liq_short_usd": rfloat(sell_vol, 6),
         "imbalance": rfloat((buy_vol - sell_vol) / den, 6),
     }
 
