@@ -152,6 +152,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     if run_live:
         cancel_unpositioned_limits(ex)
         remove_unmapped_limit_files(ex)
+        cancel_unpositioned_stops(ex)
 
     try:
         bal = ex.fetch_balance()
@@ -364,6 +365,47 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
                 )
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
+            continue
+
+
+def cancel_unpositioned_stops(exchange) -> None:
+    """Cancel reduce-only stop-loss or take-profit orders without positions."""
+
+    logger.info("Checking for orphaned SL/TP orders")
+    try:
+        exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
+        orders = exchange.fetch_open_orders()
+    except Exception as e:
+        logger.warning("cancel_unpositioned_stops fetch_open_orders error: %s", e)
+        return
+
+    pos_pairs = get_open_position_pairs(exchange)
+    for o in orders or []:
+        try:
+            info = o.get("info") or {}
+            if not (o.get("reduceOnly") or info.get("closePosition")):
+                continue
+            if not (
+                o.get("stopPrice")
+                or info.get("stopPrice")
+                or (o.get("type") or "").lower().startswith("take")
+                or (o.get("type") or "").lower().startswith("stop")
+            ):
+                continue
+            symbol = o.get("symbol") or info.get("symbol")
+            pair = _norm_pair_from_symbol(symbol)
+            if pair in pos_pairs:
+                continue
+            oid = o.get("id")
+            if not oid:
+                continue
+            try:
+                exchange.cancel_order(oid, symbol)
+            except Exception as e:
+                logger.warning("cancel_unpositioned_stops cancel_order error: %s", e)
+                continue
+        except Exception as e:
+            logger.warning("cancel_unpositioned_stops processing error: %s", e)
             continue
 
 
