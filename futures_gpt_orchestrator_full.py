@@ -63,6 +63,8 @@ logger = logging.getLogger(__name__)
 
 # Directory inside ``outputs`` where limit order metadata is stored
 LIMIT_ORDER_DIR = Path("outputs") / "limit_orders"
+# Default expiry for limit orders in minutes
+LIMIT_ORDER_EXPIRY_MIN = env_int("LIMIT_ORDER_EXPIRY_MIN", 30)
 
 
 def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
@@ -255,13 +257,8 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 entry_order = ex.create_order(
                     ccxt_sym, "limit", side, qty, entry, {"reduceOnly": False}
                 )
-                expiry_min = c.get("expiry")
-                try:
-                    expiry_sec = (
-                        float(expiry_min) * 60 if expiry_min not in (None, "") else None
-                    )
-                except Exception:
-                    expiry_sec = None
+                expiry_min = LIMIT_ORDER_EXPIRY_MIN
+                expiry_sec = float(expiry_min) * 60 if expiry_min else None
                 save_text(
                     f"{pair}.json",
                     dumps_min(

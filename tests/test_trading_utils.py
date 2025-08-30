@@ -23,7 +23,7 @@ def test_parse_mini_actions_handles_close():
     text = (
         "{"
         '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,'
-        '"risk":0.1,"expiry":120}],'
+        '"risk":0.1}],'
         '"close_all":[{"pair":"ETHUSDT"}],'
         '"close_partial":[{"pair":"LTCUSDT","pct":25}]}'
     )
@@ -31,7 +31,7 @@ def test_parse_mini_actions_handles_close():
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
     assert res["coins"][0]["tp1"] == 1.05
     assert res["coins"][0]["risk"] == 0.1
-    assert res["coins"][0]["expiry"] == 120.0
+    assert "expiry" not in res["coins"][0]
     assert res["close_all"] == [{"pair": "ETHUSDT"}]
     assert res["close_partial"] == [{"pair": "LTCUSDT", "pct": 25.0}]
 

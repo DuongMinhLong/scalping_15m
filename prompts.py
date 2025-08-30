@@ -6,14 +6,14 @@ from env_utils import dumps_min
 PROMPT_SYS_MINI = (
     "You are a professional crypto trader. "
     "Analyze market data and output ONLY valid JSON. "
-    "Output {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0,\"expiry\":0}]}. "
+    "Output {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0}]}. "
     "No prose. No markdown. If no trade, return {\"coins\":[]}."
 )
 
 PROMPT_USER_MINI = (
     # "NHIỆM VỤ: Chọn ≤6 coin từ PAYLOAD 15m + H1/H4. "
     # "Trả JSON: {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,"
-    # "\"tp\":0.0,\"conf\":0.0,\"expiry\":0}]}. Nếu không có: {\"coins\":[]}. "
+    # "\"tp\":0.0,\"conf\":0.0}]}. Nếu không có: {\"coins\":[]}. "
     # "RULE: "
     # "- Long: last_close>ema20(15m) & H1.t∈{0,1} & H4.t∈{0,1} & rsi14>50 & macd_hist>0. "
     # "- Short: last_close<ema20(15m) & H1.t∈{-1,0} & H4.t∈{-1,0} & rsi14<50 & macd_hist<0. "
@@ -32,7 +32,7 @@ PROMPT_USER_MINI = (
 # PROMPT_USER_MINI = (
 #     # "Nhiệm vụ: phân tích 15m (20 nến + chỉ báo) tham chiếu H1/H4 từ payload; chọn TỐI ĐA 6 coin phù hợp. "
 #     # "Trả về JSON DUY NHẤT theo schema: "
-#     # "{\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0,\"expiry\":0}]}. "
+#     # "{\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0}]}. "
 #     # "Chỉ chọn khi conf ≥ 7.0 và RR(=|tp-entry|/|entry-sl|) ≥ 1.8. "
 #     # "Quy tắc: "
 #     # "- Trend: Long khi close15m>EMA20 & H1/H4 trend=up; Short khi close15m<EMA20 & H1/H4 trend=down. "
@@ -74,7 +74,7 @@ PROMPT_USER_MINI = (
 #     # "- Nếu mins_to_close ≤ 15 và tín hiệu yếu → bỏ. "
 #     # "- Entry rule: Ưu tiên LIMIT pullback về EMA20/key level; nếu tín hiệu nến (pinbar/engulfing/doji/breakout) → đặt LIMIT tại 30-> 50% thân nến, không đuổi breakout nến 2–3. "
 
-#     "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0,\"expiry\":0}]}. "
+#     "Trả về JSON duy nhất dạng {\"coins\":[{\"pair\":\"SYMBOL\",\"entry\":0.0,\"sl\":0.0,\"tp\":0.0,\"conf\":0.0}]}. "
 #     "Trong đó \"expiry\" là số phút trước khi lệnh LIMIT hết hạn; bot tự hủy nếu chưa khớp. "
 #     "Không có tín hiệu hợp lệ → {\"coins\":[]}. "
 
