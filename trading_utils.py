@@ -213,7 +213,7 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
         ):
             continue
         a["tp1"] = rfloat(tp1, 8)
-        rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.01
+        rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.005
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
         m = exchange.market(ccxt_sym)  # lấy thông tin thị trường

@@ -199,7 +199,7 @@ def build_payload(
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    mcap_bases = {strip_numeric_prefix(b) for b in top_by_market_cap(limit=200)}
+    mcap_bases = {strip_numeric_prefix(b) for b in top_by_market_cap(limit=50)}
     volumes = cache_top_by_qv(exchange, limit=limit * 5, min_qv=min_qv)
 
     symbols: List[str] = []
