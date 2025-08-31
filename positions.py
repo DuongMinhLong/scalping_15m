@@ -136,21 +136,20 @@ def positions_snapshot(exchange) -> List[Dict]:
                     tp2 = rfloat(tp_sorted[1])
                 if len(tp_sorted) > 2:
                     tp3 = rfloat(tp_sorted[2])
-        out.append(
-            drop_empty(
-                {
-                    "pair": pair,
-                    "side": side,
-                    "entry": rfloat(entry_price),
-                    "qty": rfloat(qty),
-                    "sl": sl,
-                    "tp": tp1,
-                    "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
-                    "pnl": pnl,
-                }
-            )
+        data = drop_empty(
+            {
+                "pair": pair,
+                "side": side,
+                "entry": rfloat(entry_price),
+                "qty": rfloat(qty),
+                "tp": tp1,
+                "tp1": tp1,
+                "tp2": tp2,
+                "tp3": tp3,
+                "pnl": pnl,
+            }
         )
+        data["sl"] = rfloat(sl) if sl is not None else None
+        out.append(data)
     return out
 
