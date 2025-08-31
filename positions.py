@@ -46,7 +46,7 @@ def get_open_position_pairs(exchange) -> Set[str]:
 
 
 def positions_snapshot(exchange) -> List[Dict]:
-    """Return snapshot of open positions with entry, SL and TP."""
+    """Return snapshot of open positions with entry, SL, TP and PnL."""
 
     out: List[Dict] = []
     try:
@@ -73,8 +73,13 @@ def positions_snapshot(exchange) -> List[Dict]:
         if amt_val == 0:
             continue
         side = "buy" if amt_val > 0 else "sell"
+        qty = abs(amt_val)
         sl = None
         tp1 = None
+        pnl = p.get("unrealizedPnl") or (p.get("info") or {}).get(
+            "unrealizedProfit"
+        )
+        pnl = rfloat(pnl)
         try:
             orders = exchange.fetch_open_orders(sym)
         except Exception as e:
@@ -121,8 +126,10 @@ def positions_snapshot(exchange) -> List[Dict]:
                     "pair": pair,
                     "side": side,
                     "entry": rfloat(entry_price),
+                    "qty": rfloat(qty),
                     "sl": sl,
-                    "tp1": tp1,
+                    "tp": tp1,
+                    "pnl": pnl,
                 }
             )
         )

@@ -166,16 +166,16 @@ def build_payload(
     pos_pairs = {p.get("pair") for p in positions}
 
     env_pairs = os.getenv("COIN_PAIRS", "")
-    symbols: List[str] = []
+    symbols: List[str] = [pair_to_symbol(p) for p in pos_pairs]
     for raw in env_pairs.split(","):
         raw = raw.strip().upper()
         if not raw:
             continue
         pair = raw if raw.endswith("USDT") else f"{raw}USDT"
-        # if pair in exclude_pairs or pair in pos_pairs:
-        #     continue
+        if pair in exclude_pairs or pair in pos_pairs:
+            continue
         symbols.append(pair_to_symbol(pair))
-        if len(symbols) >= limit:
+        if len(symbols) >= limit + len(pos_pairs):
             break
 
     func = partial(coin_payload, exchange)
@@ -192,5 +192,6 @@ def build_payload(
         {
             "time": time_payload(),
             "coins": [drop_empty(c) for c in coins],
+            "positions": positions,
         }
     )

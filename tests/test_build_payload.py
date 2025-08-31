@@ -41,5 +41,5 @@ def test_build_payload_skips_positions(monkeypatch):
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2)
-    pairs = [c["p"] for c in payload["coins"]]
-    assert pairs == ["CCCUSDT", "AAAUSDT"]
+    pairs = {c["p"] for c in payload["coins"]}
+    assert pairs == {"CCCUSDT", "AAAUSDT", "BBBUSDT"}

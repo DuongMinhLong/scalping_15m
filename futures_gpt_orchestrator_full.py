@@ -45,7 +45,13 @@ from openai_client import extract_content, send_openai
 from payload_builder import build_payload
 from positions import _norm_pair_from_symbol, get_open_position_pairs, positions_snapshot
 from prompts import build_prompts_mini
-from trading_utils import enrich_tp_qty, parse_mini_actions, to_ccxt_symbol
+from trading_utils import (
+    enrich_tp_qty,
+    parse_mini_actions,
+    to_ccxt_symbol,
+    qty_step,
+    round_step,
+)
 
 # Configure root logger to write informational messages to both stdout and a file.
 logging.basicConfig(
@@ -185,6 +191,9 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "capital": capital,
                         "coins": [],
                         "placed": [],
+                        "closed": [],
+                        "moved_sl": [],
+                        "closed_partial": [],
                         "reason": "max_positions",
                     }
                 ),
@@ -195,13 +204,16 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 "capital": capital,
                 "coins": [],
                 "placed": [],
+                "closed": [],
+                "moved_sl": [],
+                "closed_partial": [],
             }
 
     payload_full = build_payload(ex, limit)
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))
 
-    if not payload_full.get("coins"):
+    if not payload_full.get("coins") and not payload_full.get("positions"):
         logger.info("No coins in payload, exiting run")
         save_text(
             f"{stamp}_orders.json",
@@ -211,6 +223,9 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "capital": capital,
                     "coins": [],
                     "placed": [],
+                    "closed": [],
+                    "moved_sl": [],
+                    "closed_partial": [],
                     "reason": "no_coins",
                 }
             ),
@@ -221,6 +236,9 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             "capital": capital,
             "coins": [],
             "placed": [],
+            "closed": [],
+            "moved_sl": [],
+            "closed_partial": [],
         }
 
     pr_mini = build_prompts_mini(payload_full)
@@ -233,8 +251,98 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     logger.info("Model returned %d coin actions", len(coins))
     logger.info("Mini output JSON:\n%s", mini_text)
 
+    pos_map = {
+        p.get("pair"): p
+        for p in payload_full.get("positions", [])
+        if p.get("pair")
+    }
+    close_acts = [c for c in acts.get("close", []) if c.get("pair")]
+    move_sl_acts = [m for m in acts.get("move_sl", []) if m.get("pair")]
+    close_part_acts = [cp for cp in acts.get("close_partial", []) if cp.get("pair")]
+    if acts.get("close_all"):
+        existing = {c["pair"] for c in close_acts}
+        for pair in pos_map:
+            if pair not in existing:
+                close_acts.append({"pair": pair})
 
     placed: List[Dict[str, Any]] = []
+    closed: List[Dict[str, Any]] = []
+    moved_sl: List[Dict[str, Any]] = []
+    closed_partial: List[Dict[str, Any]] = []
+
+    if run_live:
+        if close_acts:
+            logger.info("Closing %d positions", len(close_acts))
+        for c in close_acts:
+            pair = c.get("pair")
+            pos = pos_map.get(pair)
+            if not pos:
+                continue
+            side = pos.get("side")
+            if side not in ("buy", "sell"):
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            cancel_all_orders_for_pair(ex, ccxt_sym, pair)
+            exit_side = "sell" if side == "buy" else "buy"
+            try:
+                ex.create_order(
+                    ccxt_sym,
+                    "MARKET",
+                    exit_side,
+                    None,
+                    None,
+                    {"reduceOnly": True, "closePosition": True},
+                )
+                closed.append({"pair": pair})
+            except Exception as e:
+                logger.warning("close order error for %s: %s", pair, e)
+
+        for m in move_sl_acts:
+            pair = m.get("pair")
+            pos = pos_map.get(pair)
+            sl = m.get("sl")
+            if not pos or sl is None:
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            side = pos.get("side")
+            tp1 = pos.get("tp")
+            try:
+                _place_sl_tp(ex, ccxt_sym, side, None, sl, tp1)
+                moved_sl.append({"pair": pair, "sl": sl})
+            except Exception as e:
+                logger.warning("move_sl error for %s: %s", pair, e)
+
+        for cp in close_part_acts:
+            pair = cp.get("pair")
+            pos = pos_map.get(pair)
+            pct = cp.get("pct")
+            if not pos or pct is None:
+                continue
+            qty_total = pos.get("qty")
+            side = pos.get("side")
+            if qty_total is None or side not in ("buy", "sell"):
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            qty = qty_total * float(pct) / 100.0
+            try:
+                step = qty_step(ex, ccxt_sym)
+                qty = round_step(qty, step)
+            except Exception:
+                pass
+            exit_side = "sell" if side == "buy" else "buy"
+            try:
+                ex.create_order(
+                    ccxt_sym,
+                    "MARKET",
+                    exit_side,
+                    qty,
+                    None,
+                    {"reduceOnly": True},
+                )
+                closed_partial.append({"pair": pair, "pct": pct, "qty": qty})
+            except Exception as e:
+                logger.warning("close_partial order error for %s: %s", pair, e)
+
     if run_live and coins:
         logger.info("Placing %d orders", len(coins))
         pos_pairs_live = get_open_position_pairs(ex)
@@ -297,6 +405,9 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
         "capital": capital,
         "coins": coins,
         "placed": placed,
+        "closed": closed,
+        "moved_sl": moved_sl,
+        "closed_partial": closed_partial,
     }
     save_text(f"{stamp}_orders.json", dumps_min(result))
     elapsed = time.time() - start_time
