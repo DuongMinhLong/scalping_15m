@@ -29,3 +29,27 @@ def test_positions_snapshot_includes_close_position_orders():
     assert pos["sl"] == 90.0
     assert pos["tp"] == 110.0
     assert pos["tp1"] == 110.0
+
+
+class DummyExchangeNoStops:
+    def fetch_positions(self):
+        return [
+            {
+                "symbol": "BTC/USDT:USDT",
+                "contracts": 1,
+                "entryPrice": 100,
+                "unrealizedPnl": 5,
+            }
+        ]
+
+    def fetch_open_orders(self, symbol):
+        return []
+
+
+def test_positions_snapshot_includes_sl_key_without_stop_orders():
+    ex = DummyExchangeNoStops()
+    res = positions_snapshot(ex)
+    assert len(res) == 1
+    pos = res[0]
+    assert "sl" in pos
+    assert pos["sl"] is None
