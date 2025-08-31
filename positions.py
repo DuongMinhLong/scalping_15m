@@ -137,6 +137,8 @@ def positions_snapshot(exchange) -> List[Dict]:
             if (
                 o.get("reduceOnly")
                 or o.get("reduce_only")
+                or o.get("closePosition")
+                or o.get("close_position")
                 or (o.get("info") or {}).get("reduceOnly")
                 or (o.get("info") or {}).get("reduce_only")
                 or (o.get("info") or {}).get("closePosition")
