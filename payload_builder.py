@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -16,8 +17,6 @@ from env_utils import compact, drop_empty, human_num, rfloat, rprice
 from exchange_utils import (
     fetch_ohlcv_df,
     orderbook_snapshot,
-    cache_top_by_qv,
-    top_by_market_cap,
     funding_snapshot,
     open_interest_snapshot,
     cvd_snapshot,
@@ -178,31 +177,31 @@ def build_payload(
     exchange,
     limit: int = 10,
     exclude_pairs: Set[str] | None = None,
-    min_qv: float = 10_000_000,
 ) -> Dict:
-    """Build the payload used by the orchestrator with time and bias info.
+    """Build the payload used by the orchestrator with time info only.
 
-    Symbols are limited to top market cap coins and prioritised by 24h
-    quote volume. Only markets with quote volume above ``min_qv`` are
-    considered, and any pairs already in ``exclude_pairs`` or with
-    existing positions are skipped.
+    Symbols are read from the ``COIN_PAIRS`` environment variable as a
+    comma-separated list of ``BASE`` or ``BASEUSDT`` pairs. Any pairs
+    already in ``exclude_pairs`` or with existing positions are skipped.
     """
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
-    mcap_bases = {strip_numeric_prefix(b) for b in top_by_market_cap(limit=50)}
-    volumes = cache_top_by_qv(exchange, limit=limit * 5, min_qv=min_qv)
 
+    env_pairs = os.getenv("COIN_PAIRS", "")
     symbols: List[str] = []
-    for s in volumes:
-        pair = norm_pair_symbol(s)
-        base = strip_numeric_prefix(pair[:-4]) if pair.endswith("USDT") else pair
-        if base not in mcap_bases or pair in exclude_pairs or pair in pos_pairs:
+    for raw in env_pairs.split(","):
+        raw = raw.strip().upper()
+        if not raw:
             continue
-        symbols.append(s)
+        pair = raw if raw.endswith("USDT") else f"{raw}USDT"
+        if pair in exclude_pairs or pair in pos_pairs:
+            continue
+        symbols.append(pair_to_symbol(pair))
         if len(symbols) >= limit:
             break
+
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
@@ -213,15 +212,9 @@ def build_payload(
                 coins.append(fut.result())
             except Exception as e:
                 logger.warning("coin_payload failed for %s: %s", sym, e)
-    eth_symbol = pair_to_symbol("ETHUSDT")
-    eth = {
-        "h4": _tf_with_cache(exchange, eth_symbol, "4h", CACHE_H4, LOCK_H4),
-        "d1": _tf_with_cache(exchange, eth_symbol, "1d", CACHE_D1, LOCK_D1),
-    }
     return drop_empty(
         {
             "time": time_payload(),
-            "eth": drop_empty(eth),
             "coins": [drop_empty(c) for c in coins],
         }
     )
