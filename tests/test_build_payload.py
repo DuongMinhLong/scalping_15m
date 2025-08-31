@@ -43,3 +43,22 @@ def test_build_payload_skips_positions(monkeypatch):
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
     assert pairs == {"CCCUSDT", "AAAUSDT", "BBBUSDT"}
+
+
+def test_build_payload_preserves_sl(monkeypatch):
+    monkeypatch.setenv("COIN_PAIRS", "")
+
+    def fake_positions_snapshot(ex):
+        return [
+            {"pair": "AAAUSDT", "side": "buy", "entry": 1.0, "sl": None},
+            {"pair": "BBBUSDT", "side": "sell", "entry": 2.0, "sl": 1.5},
+        ]
+
+    monkeypatch.setattr(pb, "positions_snapshot", fake_positions_snapshot)
+    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+
+    payload = pb.build_payload(DummyExchange(), limit=0)
+    positions = payload["positions"]
+    assert "sl" in positions[0] and positions[0]["sl"] is None
+    assert positions[1]["sl"] == 1.5
