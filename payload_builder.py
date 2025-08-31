@@ -180,17 +180,22 @@ def build_payload(
 
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
-    with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
-        futures = {ex.submit(func, s): s for s in symbols}
-        for fut in as_completed(futures):
-            sym = futures[fut]
-            try:
-                coins.append(fut.result())
-            except Exception as e:
-                logger.warning("coin_payload failed for %s: %s", sym, e)
+    if symbols:
+        with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
+            futures = {ex.submit(func, s): s for s in symbols}
+            for fut in as_completed(futures):
+                sym = futures[fut]
+                try:
+                    coins.append(fut.result())
+                except Exception as e:
+                    logger.warning("coin_payload failed for %s: %s", sym, e)
     payload = {
         "time": time_payload(),
         "coins": [drop_empty(c) for c in coins],
         "positions": positions,
     }
-    return {k: v for k, v in payload.items() if v not in (None, "", [], {})}
+    return {
+        k: v
+        for k, v in payload.items()
+        if v not in (None, "", [], {}) or k == "positions"
+    }

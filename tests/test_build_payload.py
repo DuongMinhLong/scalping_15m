@@ -62,3 +62,13 @@ def test_build_payload_preserves_sl(monkeypatch):
     positions = payload["positions"]
     assert "sl" in positions[0] and positions[0]["sl"] is None
     assert positions[1]["sl"] == 1.5
+
+
+def test_build_payload_keeps_empty_positions(monkeypatch):
+    monkeypatch.setenv("COIN_PAIRS", "")
+    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+
+    payload = pb.build_payload(DummyExchange(), limit=0)
+    assert "positions" in payload and payload["positions"] == []
