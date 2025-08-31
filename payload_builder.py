@@ -1,4 +1,4 @@
-"""Payload construction utilities for 15m trading with higher timeframe snapshots."""
+"""Payload construction utilities for 1h trading with higher timeframe snapshots."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Dict, List, Set
 
 import pandas as pd
 
-from env_utils import compact, compact_price, drop_empty, human_num, rfloat, rprice
+from env_utils import compact, drop_empty, human_num, rfloat, rprice
 from exchange_utils import (
     fetch_ohlcv_df,
     orderbook_snapshot,
@@ -29,16 +29,18 @@ from positions import positions_snapshot
 logger = logging.getLogger(__name__)
 
 # Cache for OHLCV data by timeframe
-CACHE_M15: Dict[str, pd.DataFrame] = {}
 CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
-LOCK_M15 = Lock()
+CACHE_D1: Dict[str, pd.DataFrame] = {}
 LOCK_H1 = Lock()
 LOCK_H4 = Lock()
+LOCK_D1 = Lock()
 
 
-def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict:
-    """Fetch ``timeframe`` data with caching and return :func:`build_snap`."""
+def _tf_with_cache(
+    exchange, symbol: str, timeframe: str, cache, lock, limit: int = 200
+) -> Dict:
+    """Fetch ``timeframe`` data with caching and return :func:`build_tf`."""
 
     with lock:
         if symbol not in cache:
@@ -50,7 +52,7 @@ def _snap_with_cache(exchange, symbol: str, timeframe: str, cache, lock) -> Dict
                 df = pd.concat([cache[symbol], new]).sort_index()
                 cache[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
         df_tf = cache[symbol]
-    return build_snap(df_tf)
+    return build_tf(df_tf, limit=limit)
 
 
 def time_payload(now: datetime | None = None) -> Dict:
@@ -101,8 +103,8 @@ def strip_numeric_prefix(base: str) -> str:
     return re.sub(r"^\d+", "", base)
 
 
-def build_15m(df: pd.DataFrame, limit: int = 20, nd: int = 5) -> Dict:
-    """Build the detailed 15m payload with indicators and OHLCV."""
+def build_tf(df: pd.DataFrame, limit: int = 200, nd: int = 5) -> Dict:
+    """Build the detailed timeframe payload with indicators and OHLCV."""
 
     data = add_indicators(df)
     if limit <= 1:
@@ -158,21 +160,11 @@ def build_snap(df: pd.DataFrame) -> Dict:
 def coin_payload(exchange, symbol: str) -> Dict:
     """Build payload for a single symbol with thread-safe caching."""
 
-    with LOCK_M15:
-        if symbol not in CACHE_M15:
-            CACHE_M15[symbol] = fetch_ohlcv_df(exchange, symbol, "15m", 300)
-        else:
-            last_ts = int(CACHE_M15[symbol].index[-1].timestamp() * 1000)
-            new = fetch_ohlcv_df(exchange, symbol, "15m", 300, since=last_ts)
-            if not new.empty:
-                df = pd.concat([CACHE_M15[symbol], new]).sort_index()
-                CACHE_M15[symbol] = df[~df.index.duplicated(keep="last")].tail(300)
-        m15 = CACHE_M15[symbol]
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "m15": build_15m(m15),
-        "h1": _snap_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
-        "h4": _snap_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
+        "h1": _tf_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
+        "h4": _tf_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
+        "d1": _tf_with_cache(exchange, symbol, "1d", CACHE_D1, LOCK_D1),
         "funding": funding_snapshot(exchange, symbol),
         "oi": open_interest_snapshot(exchange, symbol),
         "cvd": cvd_snapshot(exchange, symbol),
@@ -223,8 +215,8 @@ def build_payload(
                 logger.warning("coin_payload failed for %s: %s", sym, e)
     eth_symbol = pair_to_symbol("ETHUSDT")
     eth = {
-        "h1": _snap_with_cache(exchange, eth_symbol, "1h", CACHE_H1, LOCK_H1),
-        "h4": _snap_with_cache(exchange, eth_symbol, "4h", CACHE_H4, LOCK_H4),
+        "h4": _tf_with_cache(exchange, eth_symbol, "4h", CACHE_H4, LOCK_H4),
+        "d1": _tf_with_cache(exchange, eth_symbol, "1d", CACHE_D1, LOCK_D1),
     }
     return drop_empty(
         {

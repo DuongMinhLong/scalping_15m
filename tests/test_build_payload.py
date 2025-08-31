@@ -19,7 +19,7 @@ def test_build_payload_uses_top_volume(monkeypatch):
         lambda ex, limit=10, min_qv=0: ["AAA/USDT:USDT", "BBB/USDT:USDT"],
     )
     monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["AAA", "BBB"])
-    monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2, min_qv=0)
     pairs = {c["p"] for c in payload["coins"]}
@@ -36,7 +36,7 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
         lambda ex, limit=10, min_qv=0: ["1000PEPE/USDT:USDT"],
     )
     monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["PEPE"])
-    monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=1, min_qv=0)
     pairs = {c["p"] for c in payload["coins"]}
@@ -57,7 +57,7 @@ def test_build_payload_skips_positions(monkeypatch):
         ],
     )
     monkeypatch.setattr(pb, "top_by_market_cap", lambda limit=200: ["CCC", "BBB", "AAA"])
-    monkeypatch.setattr(pb, "_snap_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
 
     payload = pb.build_payload(DummyExchange(), limit=2, min_qv=0)
     pairs = [c["p"] for c in payload["coins"]]
