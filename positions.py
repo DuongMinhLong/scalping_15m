@@ -90,7 +90,10 @@ def positions_snapshot(exchange) -> List[Dict]:
         stop_orders = [
             o
             for o in orders
-            if o.get("reduceOnly")
+            if (
+                o.get("reduceOnly")
+                or (o.get("info") or {}).get("closePosition")
+            )
             and (
                 o.get("stopPrice")
                 or (o.get("info") or {}).get("stopPrice")
