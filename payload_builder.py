@@ -188,10 +188,9 @@ def build_payload(
                 coins.append(fut.result())
             except Exception as e:
                 logger.warning("coin_payload failed for %s: %s", sym, e)
-    return drop_empty(
-        {
-            "time": time_payload(),
-            "coins": [drop_empty(c) for c in coins],
-            "positions": positions,
-        }
-    )
+    payload = {
+        "time": time_payload(),
+        "coins": [drop_empty(c) for c in coins],
+        "positions": positions,
+    }
+    return {k: v for k, v in payload.items() if v not in (None, "", [], {})}
