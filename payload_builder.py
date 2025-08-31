@@ -22,7 +22,7 @@ from exchange_utils import (
     cvd_snapshot,
     liquidation_snapshot,
 )
-from indicators import add_indicators, trend_lbl, detect_sr_levels
+from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
 
 logger = logging.getLogger(__name__)
@@ -103,41 +103,17 @@ def strip_numeric_prefix(base: str) -> str:
 
 
 def build_tf(df: pd.DataFrame, limit: int = 200, nd: int = 5) -> Dict:
-    """Build the detailed timeframe payload with indicators and OHLCV."""
+    """Build the timeframe payload returning only OHLCV data."""
 
-    data = add_indicators(df)
     if limit <= 1:
-        # ``build_snap`` calls ``add_indicators`` internally so we can pass the
-        # enriched ``data`` without harm.
-        return build_snap(data)
+        return build_snap(df)
 
-    tail = data.tail(limit)
+    tail = df.tail(limit)
     ohlcv = [
         compact([r.open, r.high, r.low, r.close], nd) + [human_num(r.volume)]
         for _, r in tail.iterrows()
     ]
-    swing_high = rfloat(data["high"].tail(limit).max(), nd)
-    swing_low = rfloat(data["low"].tail(limit).min(), nd)
-    key = {
-        "prev_close": rfloat(data.close.iloc[-2], nd) if len(data) >= 2 else None,
-        "last_close": rfloat(data.close.iloc[-1], nd),
-        "swing_high": swing_high,
-        "swing_low": swing_low,
-    }
-    sr_levels = [rfloat(lvl, nd) for lvl in detect_sr_levels(data, lookback=5)]
-    ind = {
-        "ema20": compact(data["ema20"].tail(limit).tolist(), nd),
-        "ema50": compact(data["ema50"].tail(limit).tolist(), nd),
-        "ema99": compact(data["ema99"].tail(limit).tolist(), nd),
-        "ema200": compact(data["ema200"].tail(limit).tolist(), nd),
-        "rsi14": compact(data["rsi14"].tail(limit).tolist(), nd),
-        "macd": compact(data["macd"].tail(limit).tolist(), nd),
-        "macd_sig": compact(data["macd_sig"].tail(limit).tolist(), nd),
-        "macd_hist": compact(data["macd_hist"].tail(limit).tolist(), nd),
-        "atr14": compact(data["atr14"].tail(limit).tolist(), nd),
-        "vol_spike": compact(data["vol_spike"].tail(limit).tolist(), nd),
-    }
-    return {"ohlcv": ohlcv, "ind": ind, "key": key, "sr_levels": sr_levels}
+    return {"ohlcv": ohlcv}
 
 
 def build_snap(df: pd.DataFrame) -> Dict:

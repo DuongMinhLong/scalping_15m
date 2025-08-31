@@ -5,27 +5,8 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 import payload_builder  # noqa: E402
 
 
-def test_build_tf_adds_volume(monkeypatch):
+def test_build_tf_adds_volume():
     import pandas as pd
-
-    def fake_add_indicators(df):
-        for col in [
-            "ema20",
-            "ema50",
-            "ema99",
-            "ema200",
-            "rsi14",
-            "macd",
-            "macd_sig",
-            "macd_hist",
-            "atr14",
-            "vol_spike",
-        ]:
-            df[col] = 0.0
-        return df
-
-    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "detect_sr_levels", lambda *a, **k: [])
 
     df = pd.DataFrame(
         {
@@ -42,27 +23,8 @@ def test_build_tf_adds_volume(monkeypatch):
     assert all(len(candle) == 5 for candle in res["ohlcv"])
 
 
-def test_build_tf_volume_numeric(monkeypatch):
+def test_build_tf_volume_numeric():
     import pandas as pd
-
-    def fake_add_indicators(df):
-        for col in [
-            "ema20",
-            "ema50",
-            "ema99",
-            "ema200",
-            "rsi14",
-            "macd",
-            "macd_sig",
-            "macd_hist",
-            "atr14",
-            "vol_spike",
-        ]:
-            df[col] = 0.0
-        return df
-
-    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "detect_sr_levels", lambda *a, **k: [])
 
     df = pd.DataFrame(
         {
@@ -100,7 +62,6 @@ def test_build_tf_limits_length_and_snap(monkeypatch):
 
     monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
     monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
-    monkeypatch.setattr(payload_builder, "detect_sr_levels", lambda *a, **k: [])
 
     df = pd.DataFrame(
         {
@@ -115,19 +76,6 @@ def test_build_tf_limits_length_and_snap(monkeypatch):
 
     res = payload_builder.build_tf(df)
     assert len(res["ohlcv"]) == 200
-    assert all(len(v) == 200 for v in res["ind"].values())
-    assert set(res["ind"].keys()) == {
-        "ema20",
-        "ema50",
-        "ema99",
-        "ema200",
-        "rsi14",
-        "macd",
-        "macd_sig",
-        "macd_hist",
-        "atr14",
-        "vol_spike",
-    }
 
     snap = payload_builder.build_tf(df, limit=1)
     expected = payload_builder.build_snap(df)
@@ -190,26 +138,7 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
             index=pd.date_range("2024-01-01", periods=1, freq="1h", tz="UTC"),
         )
 
-    def fake_add_indicators(df):
-        for col in [
-            "ema20",
-            "ema50",
-            "ema99",
-            "ema200",
-            "rsi14",
-            "macd",
-            "macd_sig",
-            "macd_hist",
-            "atr14",
-            "vol_spike",
-        ]:
-            df[col] = 0.0
-        return df
-
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
-    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
-    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
-    monkeypatch.setattr(payload_builder, "detect_sr_levels", lambda *a, **k: [])
     monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym, depth=10: {"sp": 0.1})
     monkeypatch.setattr(payload_builder, "funding_snapshot", lambda ex, sym: {"rate": 0.0})
     monkeypatch.setattr(payload_builder, "open_interest_snapshot", lambda ex, sym: {"amount": 0.0})
