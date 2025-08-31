@@ -22,7 +22,7 @@ def test_to_ccxt_symbol_with_exchange_markets():
 def test_parse_mini_actions_handles_close():
     text = (
         "{"
-        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,'
+        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp1":1.05,"tp2":1.1,"tp3":1.2,'
         '"risk":0.1}],'
         '"close":[{"pair":"ETHUSDT"}],'
         '"move_sl":[{"pair":"XRPUSDT","sl":0.95}],'
@@ -32,6 +32,8 @@ def test_parse_mini_actions_handles_close():
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
     assert res["coins"][0]["tp1"] == 1.05
+    assert res["coins"][0]["tp2"] == 1.1
+    assert res["coins"][0]["tp3"] == 1.2
     assert res["coins"][0]["risk"] == 0.1
     assert "expiry" not in res["coins"][0]
     assert res["close"] == [{"pair": "ETHUSDT"}]
@@ -52,10 +54,19 @@ def test_enrich_tp_qty_keeps_tp1(monkeypatch):
     )
     monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
     acts = [
-        {"pair": "BTCUSDT", "entry": 100, "sl": 90, "tp1": 110}
+        {
+            "pair": "BTCUSDT",
+            "entry": 100,
+            "sl": 90,
+            "tp1": 110,
+            "tp2": 120,
+            "tp3": 130,
+        }
     ]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
     assert res[0]["tp1"] == 110
+    assert res[0]["tp2"] == 120
+    assert res[0]["tp3"] == 130
 
 
 def test_enrich_tp_qty_skips_when_tp_missing(monkeypatch):

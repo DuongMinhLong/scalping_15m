@@ -76,6 +76,8 @@ def positions_snapshot(exchange) -> List[Dict]:
         qty = abs(amt_val)
         sl = None
         tp1 = None
+        tp2 = None
+        tp3 = None
         pnl = p.get("unrealizedPnl") or (p.get("info") or {}).get(
             "unrealizedProfit"
         )
@@ -97,14 +99,11 @@ def positions_snapshot(exchange) -> List[Dict]:
         ]
         try:
             prices = [
-                (
-                    o,
-                    float(
-                        o.get("stopPrice")
-                        or (o.get("info") or {}).get("stopPrice")
-                        or o.get("price")
-                        or 0
-                    ),
+                float(
+                    o.get("stopPrice")
+                    or (o.get("info") or {}).get("stopPrice")
+                    or o.get("price")
+                    or 0
                 )
                 for o in stop_orders
             ]
@@ -112,14 +111,28 @@ def positions_snapshot(exchange) -> List[Dict]:
             logger.warning("positions_snapshot price parse error for %s: %s", sym, e)
             prices = []
         if prices:
-            if side == "buy":
-                sl_order = min(prices, key=lambda x: x[1])
-                tp_order = max(prices, key=lambda x: x[1])
-            else:
-                sl_order = max(prices, key=lambda x: x[1])
-                tp_order = min(prices, key=lambda x: x[1])
-            sl = rfloat(sl_order[1])
-            tp1 = rfloat(tp_order[1])
+            tp_prices = []
+            sl_prices = []
+            for price in prices:
+                if side == "buy":
+                    if price < entry_price:
+                        sl_prices.append(price)
+                    elif price > entry_price:
+                        tp_prices.append(price)
+                else:
+                    if price > entry_price:
+                        sl_prices.append(price)
+                    elif price < entry_price:
+                        tp_prices.append(price)
+            if sl_prices:
+                sl = rfloat(min(sl_prices) if side == "buy" else max(sl_prices))
+            if tp_prices:
+                tp_sorted = sorted(tp_prices) if side == "buy" else sorted(tp_prices, reverse=True)
+                tp1 = rfloat(tp_sorted[0])
+                if len(tp_sorted) > 1:
+                    tp2 = rfloat(tp_sorted[1])
+                if len(tp_sorted) > 2:
+                    tp3 = rfloat(tp_sorted[2])
         out.append(
             drop_empty(
                 {
@@ -129,6 +142,9 @@ def positions_snapshot(exchange) -> List[Dict]:
                     "qty": rfloat(qty),
                     "sl": sl,
                     "tp": tp1,
+                    "tp1": tp1,
+                    "tp2": tp2,
+                    "tp3": tp3,
                     "pnl": pnl,
                 }
             )
