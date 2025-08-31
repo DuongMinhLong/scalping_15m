@@ -80,3 +80,27 @@ def test_positions_snapshot_handles_trigger_price():
     pos = res[0]
     assert pos["sl"] == 90.0
     assert pos["tp"] == 110.0
+
+
+class DummyExchangePosInfoSL:
+    def fetch_positions(self):
+        return [
+            {
+                "symbol": "BTC/USDT:USDT",
+                "contracts": 1,
+                "entryPrice": 100,
+                "unrealizedPnl": 5,
+                "info": {"stopLossPrice": 95},
+            }
+        ]
+
+    def fetch_open_orders(self, symbol):
+        return []
+
+
+def test_positions_snapshot_extracts_sl_from_position_info():
+    ex = DummyExchangePosInfoSL()
+    res = positions_snapshot(ex)
+    assert len(res) == 1
+    pos = res[0]
+    assert pos["sl"] == 95.0

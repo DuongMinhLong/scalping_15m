@@ -140,6 +140,29 @@ def positions_snapshot(exchange) -> List[Dict]:
                     tp2 = rfloat(tp_sorted[1])
                 if len(tp_sorted) > 2:
                     tp3 = rfloat(tp_sorted[2])
+        if sl is None:
+            info = p.get("info") or {}
+            sl_candidates = [
+                p.get("stopLoss"),
+                p.get("stop_loss"),
+                p.get("stopLossPrice"),
+                p.get("stop_loss_price"),
+                info.get("stopLoss"),
+                info.get("stop_loss"),
+                info.get("stopLossPrice"),
+                info.get("stop_loss_price"),
+            ]
+            sl_candidates = [rfloat(s) for s in sl_candidates if s is not None]
+            for cand in sl_candidates:
+                if side == "buy" and cand < entry_price:
+                    sl = cand
+                    break
+                if side == "sell" and cand > entry_price:
+                    sl = cand
+                    break
+            if sl is None and sl_candidates:
+                sl = sl_candidates[0]
+
         data = drop_empty(
             {
                 "pair": pair,
