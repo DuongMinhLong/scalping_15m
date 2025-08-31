@@ -29,11 +29,22 @@ def get_open_position_pairs(exchange) -> Set[str]:
         for p in positions or []:
             sym = p.get("symbol") or (p.get("info") or {}).get("symbol")
             pair = _norm_pair_from_symbol(sym)
-            amt = p.get("contracts")
+            amt = (
+                p.get("contracts")
+                or p.get("amount")
+                or p.get("size")
+                or p.get("qty")
+                or p.get("quantity")
+            )
             if amt is None:
-                amt = p.get("amount")
-            if amt is None:
-                amt = (p.get("info") or {}).get("positionAmt", 0)
+                info = p.get("info") or {}
+                amt = (
+                    info.get("positionAmt")
+                    or info.get("size")
+                    or info.get("qty")
+                    or info.get("quantity")
+                    or 0
+                )
             try:
                 if abs(float(amt)) > 0:
                     out.add(pair)
@@ -58,12 +69,30 @@ def positions_snapshot(exchange) -> List[Dict]:
     for p in positions or []:
         sym = p.get("symbol") or (p.get("info") or {}).get("symbol")
         pair = _norm_pair_from_symbol(sym)
-        amt = p.get("contracts")
+        amt = (
+            p.get("contracts")
+            or p.get("amount")
+            or p.get("size")
+            or p.get("qty")
+            or p.get("quantity")
+        )
         if amt is None:
-            amt = p.get("amount")
-        if amt is None:
-            amt = (p.get("info") or {}).get("positionAmt")
-        entry = p.get("entryPrice") or (p.get("info") or {}).get("entryPrice")
+            info = p.get("info") or {}
+            amt = (
+                info.get("positionAmt")
+                or info.get("size")
+                or info.get("qty")
+                or info.get("quantity")
+            )
+        entry = (
+            p.get("entryPrice")
+            or p.get("avgPrice")
+            or p.get("averagePrice")
+            or p.get("meanPrice")
+            or (p.get("info") or {}).get("entryPrice")
+            or (p.get("info") or {}).get("avgEntryPrice")
+            or (p.get("info") or {}).get("avgPrice")
+        )
         try:
             amt_val = float(amt)
             entry_price = float(entry)
@@ -92,7 +121,12 @@ def positions_snapshot(exchange) -> List[Dict]:
             price = (
                 o.get("stopPrice")
                 or info.get("stopPrice")
+                or o.get("stopLossPrice")
+                or info.get("stopLossPrice")
+                or o.get("takeProfitPrice")
+                or info.get("takeProfitPrice")
                 or info.get("triggerPrice")
+                or info.get("orderPrice")
                 or o.get("price")
                 or info.get("price")
             )
@@ -106,8 +140,17 @@ def positions_snapshot(exchange) -> List[Dict]:
             for o in orders
             if (
                 o.get("reduceOnly")
+                or o.get("reduce_only")
+                or o.get("close")
+                or o.get("closePosition")
+                or o.get("close_on_trigger")
+                or o.get("closeOnTrigger")
                 or (o.get("info") or {}).get("reduceOnly")
+                or (o.get("info") or {}).get("reduce_only")
+                or (o.get("info") or {}).get("close")
                 or (o.get("info") or {}).get("closePosition")
+                or (o.get("info") or {}).get("close_on_trigger")
+                or (o.get("info") or {}).get("closeOnTrigger")
             )
             and _extract_price(o) is not None
         ]
