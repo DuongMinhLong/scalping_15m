@@ -87,31 +87,35 @@ def positions_snapshot(exchange) -> List[Dict]:
         except Exception as e:
             logger.warning("positions_snapshot fetch_open_orders error for %s: %s", sym, e)
             orders = []
+        def _extract_price(o: Dict) -> float | None:
+            info = o.get("info") or {}
+            price = (
+                o.get("stopPrice")
+                or info.get("stopPrice")
+                or info.get("triggerPrice")
+                or o.get("price")
+                or info.get("price")
+            )
+            try:
+                return float(price) if price is not None else None
+            except Exception:
+                return None
+
         stop_orders = [
             o
             for o in orders
             if (
                 o.get("reduceOnly")
+                or (o.get("info") or {}).get("reduceOnly")
                 or (o.get("info") or {}).get("closePosition")
             )
-            and (
-                o.get("stopPrice")
-                or (o.get("info") or {}).get("stopPrice")
-                or o.get("price")
-            )
+            and _extract_price(o) is not None
         ]
-        try:
-            prices = [
-                float(
-                    o.get("stopPrice")
-                    or (o.get("info") or {}).get("stopPrice")
-                    or o.get("price")
-                    or 0
-                )
-                for o in stop_orders
-            ]
-        except Exception as e:
-            logger.warning("positions_snapshot price parse error for %s: %s", sym, e)
+
+        prices = [_extract_price(o) for o in stop_orders]
+        prices = [p for p in prices if p is not None]
+
+        if not prices:
             prices = []
         if prices:
             tp_prices = []
