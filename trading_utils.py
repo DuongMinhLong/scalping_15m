@@ -10,20 +10,21 @@ from openai_client import try_extract_json
 from typing import Iterable
 
 
-def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
-    """Parse MINI model JSON output into open/close instructions.
+def parse_mini_actions(text: str) -> Dict[str, Any]:
+    """Parse MINI model JSON output into trading instructions.
 
-    Returns a dict with keys ``coins``, ``close_all`` and ``close_partial``.
-    ``coins`` contains dicts with trading instructions (entry, SL, TP1, risk).
-    ``close_all`` is a list of {"pair"} dicts. ``close_partial`` is a list of
-    {"pair", "pct"} dicts where ``pct`` is a percentage between 0 and 100.
-    Invalid entries are ignored silently.
+    The result contains keys ``coins`` (new entries), ``close`` (full closes),
+    ``move_sl`` (adjust stop losses), ``close_partial`` (partial closes) and
+    ``close_all`` (boolean flag to close all positions). Invalid entries are
+    ignored silently.
     """
 
     data = try_extract_json(text)
     coins_in = data.get("coins", []) if isinstance(data, dict) else []
-    close_all_in = data.get("close_all", []) if isinstance(data, dict) else []
+    close_in = data.get("close", []) if isinstance(data, dict) else []
+    move_sl_in = data.get("move_sl", []) if isinstance(data, dict) else []
     close_part_in = data.get("close_partial", []) if isinstance(data, dict) else []
+    close_all_flag = bool(data.get("close_all")) if isinstance(data, dict) else False
 
     coins: List[Dict[str, Any]] = []
     for item in coins_in:
@@ -69,13 +70,26 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             }
         )
 
-    close_all: List[Dict[str, Any]] = []
-    for item in close_all_in:
+    close: List[Dict[str, Any]] = []
+    for item in close_in:
         if not isinstance(item, dict):
             continue
         pair = (item.get("pair") or "").upper().replace("/", "")
         if pair:
-            close_all.append({"pair": pair})
+            close.append({"pair": pair})
+
+    move_sl: List[Dict[str, Any]] = []
+    for item in move_sl_in:
+        if not isinstance(item, dict):
+            continue
+        pair = (item.get("pair") or "").upper().replace("/", "")
+        sl_val = item.get("sl")
+        try:
+            sl_val = float(sl_val)
+        except Exception:
+            continue
+        if pair:
+            move_sl.append({"pair": pair, "sl": sl_val})
 
     close_partial: List[Dict[str, Any]] = []
     for item in close_part_in:
@@ -91,7 +105,13 @@ def parse_mini_actions(text: str) -> Dict[str, List[Dict[str, Any]]]:
             continue
         close_partial.append({"pair": pair, "pct": pct})
 
-    return {"coins": coins, "close_all": close_all, "close_partial": close_partial}
+    return {
+        "coins": coins,
+        "close": close,
+        "move_sl": move_sl,
+        "close_partial": close_partial,
+        "close_all": close_all_flag,
+    }
 
 
 KNOWN_QUOTES: Iterable[str] = (

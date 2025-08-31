@@ -51,7 +51,12 @@ def test_run_sends_coins_only(monkeypatch):
 
     def fake_build_payload(ex, limit):
         build_called["called"] = True
-        return {"coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}]}
+        return {
+            "coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}],
+            "positions": [
+                {"pair": "ETHUSDT", "entry": 1, "sl": 0.9, "tp": 1.1, "pnl": 0.0}
+            ],
+        }
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
 
@@ -75,18 +80,24 @@ def test_run_sends_coins_only(monkeypatch):
     payload_str = payload_str[payload_str.find("{") :]
     data = json.loads(payload_str)
     assert any(c.get("p") == "ETHUSDT" for c in data.get("coins", []))
-    assert "positions" not in data
+    assert data.get("positions")
     assert res == {
         "ts": "ts",
         "live": False,
         "capital": 1000.0,
         "coins": [],
         "placed": [],
+        "closed": [],
+        "moved_sl": [],
+        "closed_partial": [],
     }
     assert "ts_orders.json" in fake_save_text.saved
     data = json.loads(fake_save_text.saved["ts_orders.json"])
     assert data["coins"] == []
     assert data["placed"] == []
+    assert data["closed"] == []
+    assert data["moved_sl"] == []
+    assert data["closed_partial"] == []
 
 
 def test_run_cancels_existing_orders(monkeypatch, tmp_path):
@@ -194,6 +205,111 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     assert len(ex.orders) == 0
 
 
+def test_run_handles_partial_and_move_sl(monkeypatch):
+    ex = CaptureExchange()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+
+    def fake_build_payload(ex2, limit):
+        return {
+            "coins": [],
+            "positions": [
+                {
+                    "pair": "BTCUSDT",
+                    "side": "buy",
+                    "entry": 1,
+                    "sl": 0.9,
+                    "tp": 1.1,
+                    "pnl": 0.0,
+                    "qty": 2,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
+    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
+    monkeypatch.setattr(orch, "extract_content", lambda r: "")
+    monkeypatch.setattr(
+        orch,
+        "parse_mini_actions",
+        lambda text: {
+            "coins": [],
+            "close": [],
+            "move_sl": [{"pair": "BTCUSDT", "sl": 0.95}],
+            "close_partial": [{"pair": "BTCUSDT", "pct": 50}],
+            "close_all": False,
+        },
+    )
+    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
+    monkeypatch.setattr(orch, "qty_step", lambda e, s: 1)
+    monkeypatch.setattr(orch, "round_step", lambda q, s: q)
+
+    called = {}
+
+    def fake_place_sl_tp(exchange, symbol, side, qty, sl, tp1):
+        called["args"] = (symbol, side, qty, sl, tp1)
+
+    monkeypatch.setattr(orch, "_place_sl_tp", fake_place_sl_tp)
+
+    res = orch.run(run_live=True, ex=ex)
+
+    assert ex.orders == [
+        ("BTC/USDT", "MARKET", "sell", 1.0, None, {"reduceOnly": True})
+    ]
+    assert called.get("args") == ("BTC/USDT", "buy", None, 0.95, 1.1)
+    assert res["closed_partial"]
+    assert res["moved_sl"]
+
+
+def test_run_handles_close_all(monkeypatch):
+    ex = CaptureExchange()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+
+    def fake_build_payload(ex2, limit):
+        return {
+            "coins": [],
+            "positions": [
+                {
+                    "pair": "ETHUSDT",
+                    "side": "sell",
+                    "entry": 1,
+                    "sl": 1.1,
+                    "tp": 0.9,
+                    "pnl": 0.0,
+                    "qty": 3,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
+    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
+    monkeypatch.setattr(orch, "extract_content", lambda r: "")
+    monkeypatch.setattr(
+        orch,
+        "parse_mini_actions",
+        lambda text: {
+            "coins": [],
+            "close": [],
+            "move_sl": [],
+            "close_partial": [],
+            "close_all": True,
+        },
+    )
+    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
+
+    res = orch.run(run_live=True, ex=ex)
+
+    assert ex.orders == [
+        ("ETH/USDT", "MARKET", "buy", None, None, {"reduceOnly": True, "closePosition": True})
+    ]
+    assert res["closed"] == [{"pair": "ETHUSDT"}]
+
+
 def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
@@ -226,6 +342,9 @@ def test_run_respects_max_open_positions(monkeypatch):
         "capital": 1000.0,
         "coins": [],
         "placed": [],
+        "closed": [],
+        "moved_sl": [],
+        "closed_partial": [],
     }
 
 

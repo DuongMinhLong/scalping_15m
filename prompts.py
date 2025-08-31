@@ -7,6 +7,7 @@ PROMPT_SYS_MINI = (
     "- Phân tích & xuất lệnh cho các cặp USDT (multi-coin).\n"
     "DỮ LIỆU ĐẦU VÀO (payload)\n"
     "- OHLCV 200 nến cho mỗi symbol USDT ở 1H/4H/1D.\n"
+    "- Vị thế hiện tại: {pair, side, entry, sl, tp, pnl}.\n"
     "- Tuỳ chọn: derivatives (funding, OI, basis), order flow (CVD/delta, liquidations), volume profile (POC/HVN/LVN), volatility (ATR/HV/IV), on-chain/sentiment, sự kiện. Nếu thiếu, bỏ qua.\n"
     "PHƯƠNG PHÁP (ALL TA)\n"
     "1) Cấu trúc thị trường HH/HL/LH/LL, cung–cầu, S/R flip, FVG, liquidity sweep/reclaim.\n"
@@ -29,7 +30,7 @@ PROMPT_SYS_MINI = (
     "SCORING\n"
     "- CONF = structure+liquidity 35% + momentum 20% + trend alignment 15% + derivatives 10% + orderflow/volume 10% + relative strength 5% + volatility 5%.\n"
     "ĐẦU RA (BẮT BUỘC)\n"
-    "- Trả về DUY NHẤT JSON: {\"coins\":[{\"pair\":\"SYMBOLUSDT\",\"entry\":0.00,\"sl\":0.00,\"tp\":0.00,\"conf\":0.0,\"expiry\":0}]}.\n"
+    "- Trả về DUY NHẤT JSON: {\"coins\":[{\"pair\":\"SYMBOLUSDT\",\"entry\":0.00,\"sl\":0.00,\"tp\":0.00,\"conf\":0.0,\"expiry\":0}],\"close\":[{\"pair\":\"SYMBOLUSDT\"}],\"move_sl\":[{\"pair\":\"SYMBOLUSDT\",\"sl\":0.0}],\"close_partial\":[{\"pair\":\"SYMBOLUSDT\",\"pct\":50}],\"close_all\":false}.\n"
     "- Áp dụng ngưỡng: CONF ≥ 7.0 và RR ≥ 1.8; nếu không có symbol nào đạt, trả {\"coins\":[]}.\n"
     "- entry/sl/tp: số thực 2 chữ số; conf: [0,10] 1 chữ số; expiry: UNIX epoch (ví dụ now+21600). KHÔNG thêm văn bản/markdown/giải thích.\n"
 )
@@ -39,7 +40,7 @@ PROMPT_USER_MINI = (
     "1) Với mỗi symbol trong payload, tính toàn bộ chỉ báo/điểm sóng/volume/derivs/profile theo quy trình ở trên.\n"
     "2) Xác định bias đa khung, chọn setup (pullback/breakout-retest), vùng entry/SL/TP; áp dụng crowded long và Elliott invalidation.\n"
     "3) Tính RR và CONF theo trọng số; lọc theo tiêu chí ngưỡng ở phần ĐẦU RA.\n"
-    "4) Xuất DUY NHẤT JSON đúng schema, không kèm giải thích/markdown.\n"
+    "4) Xuất DUY NHẤT JSON đúng schema (coins, close, move_sl, close_partial, close_all), không kèm giải thích/markdown.\n"
     "DỮ LIỆU:\\n{payload}\n"
 )
 
