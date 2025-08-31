@@ -172,8 +172,8 @@ def build_payload(
         if not raw:
             continue
         pair = raw if raw.endswith("USDT") else f"{raw}USDT"
-        if pair in exclude_pairs or pair in pos_pairs:
-            continue
+        # if pair in exclude_pairs or pair in pos_pairs:
+        #     continue
         symbols.append(pair_to_symbol(pair))
         if len(symbols) >= limit:
             break
