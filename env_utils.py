@@ -55,6 +55,15 @@ def env_bool(key: str, default: bool = False) -> bool:
     return value in ("1", "true", "yes", "y", "on")
 
 
+def env_float(key: str, default: float) -> float:
+    """Read float configuration from environment."""
+
+    try:
+        return float(os.getenv(key, default))
+    except Exception:
+        return default
+
+
 def get_models() -> tuple[str, str]:
     """Return names of the nano and mini models used for analysis."""
 

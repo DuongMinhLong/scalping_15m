@@ -69,6 +69,30 @@ def test_enrich_tp_qty_keeps_tp1(monkeypatch):
     assert res[0]["tp3"] == 130
 
 
+def test_enrich_tp_qty_uses_env_default_risk(monkeypatch):
+    ex = types.SimpleNamespace(
+        market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
+    )
+    monkeypatch.setattr(trading_utils, "qty_step", lambda e, s: 1)
+    monkeypatch.setattr(
+        trading_utils,
+        "calc_qty",
+        lambda capital, rf, entry, sl, step, max_lev, contract: 1,
+    )
+    monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
+    monkeypatch.setattr(trading_utils, "DEFAULT_RISK_FRAC", 0.02)
+    acts = [
+        {
+            "pair": "BTCUSDT",
+            "entry": 100,
+            "sl": 90,
+            "tp1": 110,
+        }
+    ]
+    res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
+    assert res[0]["risk"] == 0.02
+
+
 def test_enrich_tp_qty_skips_when_tp_missing(monkeypatch):
     ex = types.SimpleNamespace(
         market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}

@@ -5,9 +5,11 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional
 
-from env_utils import rfloat
+from env_utils import env_float, rfloat
 from openai_client import try_extract_json
 from typing import Iterable
+
+DEFAULT_RISK_FRAC = env_float("DEFAULT_RISK", 0.005)
 
 
 def parse_mini_actions(text: str) -> Dict[str, Any]:
@@ -252,7 +254,9 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
             a["tp2"] = rfloat(tp2, 8)
         if isinstance(tp3, (int, float)):
             a["tp3"] = rfloat(tp3, 8)
-        rf = float(risk) if isinstance(risk, (int, float)) and risk > 0 else 0.005
+        rf = (
+            float(risk) if isinstance(risk, (int, float)) and risk > 0 else DEFAULT_RISK_FRAC
+        )
         ccxt_sym = to_ccxt_symbol(a["pair"])
         step = qty_step(exchange, ccxt_sym)
         m = exchange.market(ccxt_sym)  # lấy thông tin thị trường
