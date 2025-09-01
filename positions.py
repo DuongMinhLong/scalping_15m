@@ -121,6 +121,7 @@ def positions_snapshot(exchange) -> List[Dict]:
             price = (
                 o.get("stopPrice")
                 or info.get("stopPrice")
+                or o.get("triggerPrice")
                 or info.get("triggerPrice")
                 or info.get("orderPrice")
                 or o.get("price")

@@ -551,6 +551,8 @@ def cancel_unpositioned_stops(exchange) -> None:
             if not (
                 o.get("stopPrice")
                 or info.get("stopPrice")
+                or o.get("triggerPrice")
+                or info.get("triggerPrice")
                 or (o.get("type") or "").lower().startswith("take")
                 or (o.get("type") or "").lower().startswith("stop")
             ):
@@ -745,6 +747,8 @@ def move_sl_to_entry(exchange):
             and (
                 o.get("stopPrice")
                 or (o.get("info") or {}).get("stopPrice")
+                or o.get("triggerPrice")
+                or (o.get("info") or {}).get("triggerPrice")
                 or o.get("price")
             )
         ]
