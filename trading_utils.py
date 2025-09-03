@@ -10,13 +10,16 @@ from openai_client import try_extract_json
 from typing import Iterable
 
 DEFAULT_RISK_FRAC = env_float("DEFAULT_RISK", 0.005)
+MIN_CONF = 7.0
+MIN_RR = 1.5
 
 
 def parse_mini_actions(text: str) -> Dict[str, Any]:
     """Parse MINI model JSON output into trading instructions.
 
-    Currently only ``coins`` entries are supported. Any additional fields in
-    the JSON output are ignored silently.
+    Only coin entries with ``conf`` >= ``MIN_CONF`` and risk/reward ``rr``
+    above ``MIN_RR`` are retained. Any additional JSON fields are ignored
+    silently.
     """
 
     data = try_extract_json(text)
@@ -48,6 +51,10 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
         if None in (entry, sl, tp) or entry == sl:
             continue
         if risk is not None and not (0 < risk < 1):
+            continue
+        if conf is None or conf < MIN_CONF:
+            continue
+        if rr is None or rr <= MIN_RR:
             continue
         side = "buy" if entry > sl else "sell"
         if tp is not None and (
