@@ -21,6 +21,7 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
 
     data = try_extract_json(text)
     coins_in = data.get("coins", []) if isinstance(data, dict) else []
+    close_in = data.get("close", []) if isinstance(data, dict) else []
 
     coins: List[Dict[str, Any]] = []
     for item in coins_in:
@@ -65,9 +66,16 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
                 "rr": rr,
             }
         )
+    close: List[str] = []
+    for c in close_in:
+        if isinstance(c, str):
+            c_pair = c.upper().replace("/", "")
+            if c_pair:
+                close.append(c_pair)
 
     return {
         "coins": coins,
+        "close": close,
     }
 
 

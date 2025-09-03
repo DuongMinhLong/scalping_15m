@@ -87,11 +87,13 @@ def test_run_sends_coins_only(monkeypatch):
         "capital": 1000.0,
         "coins": [],
         "placed": [],
+        "closed": [],
     }
     assert "ts_orders.json" in fake_save_text.saved
     data = json.loads(fake_save_text.saved["ts_orders.json"])
     assert data["coins"] == []
     assert data["placed"] == []
+    assert data["closed"] == []
 
 
 def test_run_cancels_existing_orders(monkeypatch, tmp_path):
@@ -199,6 +201,59 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     assert len(ex.orders) == 0
 
 
+def test_run_closes_positions(monkeypatch):
+    class Ex:
+        def __init__(self):
+            self.orders = []
+
+        def fetch_balance(self):
+            return {"total": {"USDT": 1000}}
+
+        def fetch_positions(self):
+            return [
+                {"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 1},
+            ]
+
+        def fetch_open_orders(self, symbol):
+            return []
+
+        def cancel_order(self, oid, symbol):
+            pass
+
+        def create_order(self, symbol, typ, side, qty, price, params):
+            self.orders.append((symbol, typ, side, qty, price, params))
+            return {"id": "close"}
+
+    ex = Ex()
+    monkeypatch.setattr(orch, "load_env", lambda: None)
+    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
+    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
+    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
+    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"positions": ["p"]})
+    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
+    monkeypatch.setattr(orch, "extract_content", lambda r: "")
+    monkeypatch.setattr(
+        orch, "parse_mini_actions", lambda text: {"coins": [], "close": ["BTCUSDT"]}
+    )
+    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
+    monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
+    monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
+    monkeypatch.setattr(orch, "cancel_unpositioned_stops", lambda e: None)
+
+    res = orch.run(run_live=True, ex=ex)
+
+    assert ex.orders == [
+        (
+            "BTC/USDT",
+            "market",
+            "sell",
+            1,
+            None,
+            {"reduceOnly": True, "closePosition": True},
+        )
+    ]
+    assert res["closed"] == ["BTCUSDT"]
+
 def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
@@ -231,6 +286,7 @@ def test_run_respects_max_open_positions(monkeypatch):
         "capital": 1000.0,
         "coins": [],
         "placed": [],
+        "closed": [],
     }
 
 

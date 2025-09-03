@@ -23,13 +23,13 @@ def test_parse_mini_actions_coins_only():
     text = (
         "{"
         '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,"risk":0.1}],'
-        '"close":[{"pair":"ETHUSDT"}]}'
+        '"close":["ETHUSDT"]}'
     )
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
     assert res["coins"][0]["tp"] == 1.05
     assert res["coins"][0]["risk"] == 0.1
-    assert "close" not in res
+    assert res["close"] == ["ETHUSDT"]
 
 
 def test_parse_mini_actions_requires_tp():
