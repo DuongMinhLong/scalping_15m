@@ -1,4 +1,4 @@
-"""Payload construction utilities for 1h trading with higher timeframe snapshots."""
+"""Payload construction utilities for 15m trading with 1h/4h snapshots."""
 
 from __future__ import annotations
 
@@ -29,12 +29,12 @@ from events import event_snapshot
 logger = logging.getLogger(__name__)
 
 # Cache for OHLCV data by timeframe
+CACHE_M15: Dict[str, pd.DataFrame] = {}
 CACHE_H1: Dict[str, pd.DataFrame] = {}
 CACHE_H4: Dict[str, pd.DataFrame] = {}
-CACHE_D1: Dict[str, pd.DataFrame] = {}
+LOCK_M15 = Lock()
 LOCK_H1 = Lock()
 LOCK_H4 = Lock()
-LOCK_D1 = Lock()
 
 
 def _tf_with_cache(
@@ -138,9 +138,9 @@ def coin_payload(exchange, symbol: str) -> Dict:
 
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "h1": _tf_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
-        "h4": _tf_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
-        "d1": _tf_with_cache(exchange, symbol, "1d", CACHE_D1, LOCK_D1),
+        "m15": _tf_with_cache(exchange, symbol, "15m", CACHE_M15, LOCK_M15, limit=100),
+        "h1": _tf_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1, limit=1),
+        "h4": _tf_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4, limit=1),
         "funding": funding_snapshot(exchange, symbol),
         "oi": open_interest_snapshot(exchange, symbol),
         "cvd": cvd_snapshot(exchange, symbol),

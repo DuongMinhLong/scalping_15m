@@ -122,9 +122,9 @@ def test_build_snap_rounds_price(monkeypatch):
 def test_coin_payload_includes_higher_timeframes(monkeypatch):
     import pandas as pd
 
+    payload_builder.CACHE_M15.clear()
     payload_builder.CACHE_H1.clear()
     payload_builder.CACHE_H4.clear()
-    payload_builder.CACHE_D1.clear()
 
     def fake_fetch(exchange, symbol, timeframe, limit, since=None):
         return pd.DataFrame(
@@ -135,7 +135,7 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
                 "close": [1.0],
                 "volume": [1.0],
             },
-            index=pd.date_range("2024-01-01", periods=1, freq="1h", tz="UTC"),
+            index=pd.date_range("2024-01-01", periods=1, freq="15min", tz="UTC"),
         )
 
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
@@ -148,9 +148,9 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
     res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
     assert {
         "pair",
+        "m15",
         "h1",
         "h4",
-        "d1",
         "funding",
         "oi",
         "cvd",
