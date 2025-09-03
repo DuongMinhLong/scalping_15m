@@ -743,7 +743,7 @@ def live_loop(
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
-    - Orchestrator job runs at minutes 0, 15, 30 and 45.
+    - Orchestrator job runs at the top of every hour.
     - Cancel stale limit orders mỗi 10 phút.
     - Check để add SL/TP mỗi 1 phút.
     """
@@ -812,7 +812,7 @@ def live_loop(
     #     except Exception:
     #         logger.exception("move_sl_job error")
 
-    scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
+    scheduler.add_job(run_job, CronTrigger(minute="0"))
 
     # Các job còn lại chạy theo interval
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
