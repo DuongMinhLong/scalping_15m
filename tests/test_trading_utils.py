@@ -53,6 +53,14 @@ def test_parse_mini_actions_filters_conf_rr():
     assert res["coins"] == []
 
 
+def test_parse_mini_actions_allows_equal_rr():
+    text = (
+        '{"coins":[{"pair":"AVAXUSDT","entry":25.28,"sl":24.90,"tp":25.85,"conf":7.5,"rr":1.5}]}'
+    )
+    res = trading_utils.parse_mini_actions(text)
+    assert res["coins"]
+
+
 def test_enrich_tp_qty_keeps_tp(monkeypatch):
     ex = types.SimpleNamespace(
         market=lambda symbol: {"limits": {"leverage": {"max": 100}}, "contractSize": 1}
