@@ -196,6 +196,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "capital": capital,
                         "coins": [],
                         "placed": [],
+                        "closed": [],
                         "reason": "max_positions",
                     }
                 ),
@@ -206,6 +207,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 "capital": capital,
                 "coins": [],
                 "placed": [],
+                "closed": [],
             }
 
     payload_full = build_payload(ex, limit)
@@ -222,6 +224,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "capital": capital,
                     "coins": [],
                     "placed": [],
+                    "closed": [],
                     "reason": "no_coins",
                 }
             ),
@@ -232,6 +235,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             "capital": capital,
             "coins": [],
             "placed": [],
+            "closed": [],
         }
 
     pr_mini = build_prompts_mini(payload_full)
@@ -240,11 +244,17 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     save_text(f"{stamp}_mini_output.json", mini_text)
     acts = parse_mini_actions(mini_text)
     coins: List[Dict[str, Any]] = acts.get("coins", [])
+    close_pairs: List[str] = acts.get("close", [])
     coins = enrich_tp_qty(ex, coins, capital)
-    logger.info("Model returned %d coin actions", len(coins))
+    logger.info(
+        "Model returned %d coin actions, %d close actions",
+        len(coins),
+        len(close_pairs),
+    )
     logger.info("Mini output JSON:\n%s", mini_text)
 
     placed: List[Dict[str, Any]] = []
+    closed: List[str] = []
 
     if run_live and coins:
         logger.info("Placing %d orders", len(coins))
@@ -303,11 +313,38 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 logger.warning("order placement error for %s: %s", pair, e)
                 continue
 
+    if run_live and close_pairs:
+        snap = {p.get("pair"): p for p in positions_snapshot(ex)}
+        for pair in close_pairs:
+            pos = snap.get(pair)
+            if not pos:
+                continue
+            side = pos.get("side")
+            qty = pos.get("qty")
+            if side not in ("buy", "sell") or not isinstance(qty, (int, float)):
+                continue
+            ccxt_sym = to_ccxt_symbol(pair)
+            cancel_all_orders_for_pair(ex, ccxt_sym, pair)
+            exit_side = "sell" if side == "buy" else "buy"
+            try:
+                ex.create_order(
+                    ccxt_sym,
+                    "market",
+                    exit_side,
+                    qty,
+                    None,
+                    {"reduceOnly": True, "closePosition": True},
+                )
+                closed.append(pair)
+            except Exception as e:
+                logger.warning("close_position error for %s: %s", pair, e)
+
     result = {
         "live": run_live,
         "capital": capital,
         "coins": coins,
         "placed": placed,
+        "closed": closed,
     }
     save_text(f"{stamp}_orders.json", dumps_min(result))
     elapsed = time.time() - start_time
