@@ -23,7 +23,7 @@ from exchange_utils import (
     liquidation_snapshot,
 )
 from indicators import add_indicators, trend_lbl
-from positions import positions_snapshot
+from positions import get_open_position_pairs
 from events import event_snapshot
 
 logger = logging.getLogger(__name__)
@@ -163,11 +163,10 @@ def build_payload(
     """
 
     exclude_pairs = exclude_pairs or set()
-    positions = positions_snapshot(exchange)
-    pos_pairs = {p.get("pair") for p in positions}
+    pos_pairs = get_open_position_pairs(exchange)
 
     env_pairs = os.getenv("COIN_PAIRS", "")
-    symbols: List[str] = [pair_to_symbol(p) for p in pos_pairs]
+    symbols: List[str] = []
     for raw in env_pairs.split(","):
         raw = raw.strip().upper()
         if not raw:
@@ -176,23 +175,23 @@ def build_payload(
         if pair in exclude_pairs or pair in pos_pairs:
             continue
         symbols.append(pair_to_symbol(pair))
-        if len(symbols) >= limit + len(pos_pairs):
+        if len(symbols) >= limit:
             break
 
     func = partial(coin_payload, exchange)
     coins: List[Dict] = []
-    with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
-        futures = {ex.submit(func, s): s for s in symbols}
-        for fut in as_completed(futures):
-            sym = futures[fut]
-            try:
-                coins.append(fut.result())
-            except Exception as e:
-                logger.warning("coin_payload failed for %s: %s", sym, e)
+    if symbols:
+        with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as ex:
+            futures = {ex.submit(func, s): s for s in symbols}
+            for fut in as_completed(futures):
+                sym = futures[fut]
+                try:
+                    coins.append(fut.result())
+                except Exception as e:
+                    logger.warning("coin_payload failed for %s: %s", sym, e)
     payload = {
         "time": time_payload(),
         "events": event_snapshot(),
         "coins": [drop_empty(c) for c in coins],
-        "positions": positions,
     }
     return {k: v for k, v in payload.items() if v not in (None, "", [], {})}

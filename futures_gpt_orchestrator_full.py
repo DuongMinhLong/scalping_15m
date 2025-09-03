@@ -214,7 +214,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))
 
-    if not payload_full.get("coins") and not payload_full.get("positions"):
+    if not payload_full.get("coins"):
         logger.info("No coins in payload, exiting run")
         save_text(
             f"{stamp}_orders.json",
