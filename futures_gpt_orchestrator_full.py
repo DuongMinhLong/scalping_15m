@@ -196,9 +196,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "capital": capital,
                         "coins": [],
                         "placed": [],
-                        "closed": [],
-                        "moved_sl": [],
-                        "closed_partial": [],
                         "reason": "max_positions",
                     }
                 ),
@@ -209,9 +206,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                 "capital": capital,
                 "coins": [],
                 "placed": [],
-                "closed": [],
-                "moved_sl": [],
-                "closed_partial": [],
             }
 
     payload_full = build_payload(ex, limit)
@@ -228,9 +222,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                     "capital": capital,
                     "coins": [],
                     "placed": [],
-                    "closed": [],
-                    "moved_sl": [],
-                    "closed_partial": [],
                     "reason": "no_coins",
                 }
             ),
@@ -241,9 +232,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             "capital": capital,
             "coins": [],
             "placed": [],
-            "closed": [],
-            "moved_sl": [],
-            "closed_partial": [],
         }
 
     pr_mini = build_prompts_mini(payload_full)
@@ -256,98 +244,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     logger.info("Model returned %d coin actions", len(coins))
     logger.info("Mini output JSON:\n%s", mini_text)
 
-    pos_map = {
-        p.get("pair"): p
-        for p in payload_full.get("positions", [])
-        if p.get("pair")
-    }
-    close_acts = [c for c in acts.get("close", []) if c.get("pair")]
-    move_sl_acts = [m for m in acts.get("move_sl", []) if m.get("pair")]
-    close_part_acts = [cp for cp in acts.get("close_partial", []) if cp.get("pair")]
-    if acts.get("close_all"):
-        existing = {c["pair"] for c in close_acts}
-        for pair in pos_map:
-            if pair not in existing:
-                close_acts.append({"pair": pair})
-
     placed: List[Dict[str, Any]] = []
-    closed: List[Dict[str, Any]] = []
-    moved_sl: List[Dict[str, Any]] = []
-    closed_partial: List[Dict[str, Any]] = []
-
-    if run_live:
-        if close_acts:
-            logger.info("Closing %d positions", len(close_acts))
-        for c in close_acts:
-            pair = c.get("pair")
-            pos = pos_map.get(pair)
-            if not pos:
-                continue
-            side = pos.get("side")
-            if side not in ("buy", "sell"):
-                continue
-            ccxt_sym = to_ccxt_symbol(pair)
-            cancel_all_orders_for_pair(ex, ccxt_sym, pair)
-            exit_side = "sell" if side == "buy" else "buy"
-            try:
-                ex.create_order(
-                    ccxt_sym,
-                    "MARKET",
-                    exit_side,
-                    None,
-                    None,
-                    {"reduceOnly": True, "closePosition": True},
-                )
-                closed.append({"pair": pair})
-            except Exception as e:
-                logger.warning("close order error for %s: %s", pair, e)
-
-        for m in move_sl_acts:
-            pair = m.get("pair")
-            pos = pos_map.get(pair)
-            sl = m.get("sl")
-            if not pos or sl is None:
-                continue
-            ccxt_sym = to_ccxt_symbol(pair)
-            side = pos.get("side")
-            qty_total = pos.get("qty")
-            tp = pos.get("tp")
-            try:
-                _place_sl_tp(ex, ccxt_sym, side, qty_total, sl, tp)
-                moved_sl.append({"pair": pair, "sl": sl})
-            except Exception as e:
-                logger.warning("move_sl error for %s: %s", pair, e)
-
-        for cp in close_part_acts:
-            pair = cp.get("pair")
-            pos = pos_map.get(pair)
-            pct = cp.get("pct")
-            if not pos or pct is None:
-                continue
-            qty_total = pos.get("qty")
-            side = pos.get("side")
-            if qty_total is None or side not in ("buy", "sell"):
-                continue
-            ccxt_sym = to_ccxt_symbol(pair)
-            qty = qty_total * float(pct) / 100.0
-            try:
-                step = qty_step(ex, ccxt_sym)
-                qty = round_step(qty, step)
-            except Exception:
-                pass
-            exit_side = "sell" if side == "buy" else "buy"
-            try:
-                ex.create_order(
-                    ccxt_sym,
-                    "MARKET",
-                    exit_side,
-                    qty,
-                    None,
-                    {"reduceOnly": True},
-                )
-                closed_partial.append({"pair": pair, "pct": pct, "qty": qty})
-            except Exception as e:
-                logger.warning("close_partial order error for %s: %s", pair, e)
 
     if run_live and coins:
         logger.info("Placing %d orders", len(coins))
@@ -411,9 +308,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
         "capital": capital,
         "coins": coins,
         "placed": placed,
-        "closed": closed,
-        "moved_sl": moved_sl,
-        "closed_partial": closed_partial,
     }
     save_text(f"{stamp}_orders.json", dumps_min(result))
     elapsed = time.time() - start_time
@@ -616,7 +510,7 @@ def add_sl_tp_from_json(exchange):
         side = data.get("side")
         qty = data.get("qty")
         sl = data.get("sl")
-        tp = data.get("tp") if data.get("tp") is not None else data.get("tp1")
+        tp = data.get("tp")
         if not (pair and order_id and side and qty and sl and tp):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
@@ -661,18 +555,21 @@ def _get_position_info(pos):
 
 
 def move_sl_to_entry(exchange):
-    """Shift stop-loss to entry once price moves the original risk."""
+    """If price surpasses 1R, close 20% and move stop-loss to entry."""
     positions = positions_snapshot(exchange)
     for pos in positions:
         pair = pos.get("pair")
         side = pos.get("side")
         entry = pos.get("entry")
         sl = pos.get("sl")
-        if not (pair and side and entry and sl):
+        tp = pos.get("tp")
+        qty_total = pos.get("qty")
+        if not (pair and side and entry and sl and tp and qty_total):
             continue
         risk = abs(entry - sl)
         if risk <= 0:
             continue
+        tp1 = entry + risk if side == "buy" else entry - risk
         symbol = to_ccxt_symbol(pair)
         try:
             ticker = exchange.fetch_ticker(symbol)
@@ -680,62 +577,46 @@ def move_sl_to_entry(exchange):
         except Exception as e:
             logger.warning("move_sl_to_entry fetch_ticker error for %s: %s", pair, e)
             continue
-        if abs(price - entry) < risk:
+        hit = (side == "buy" and price > tp1) or (side == "sell" and price < tp1)
+        if not hit:
             continue
-        try:
-            orders = exchange.fetch_open_orders(symbol)
-        except Exception as e:
-            logger.warning(
-                "move_sl_to_entry fetch_open_orders error for %s: %s", pair, e
-            )
-            continue
-        stop_orders = [
-            o
-            for o in orders
-            if o.get("reduceOnly")
-            and (
-                o.get("stopPrice")
-                or (o.get("info") or {}).get("stopPrice")
-                or o.get("triggerPrice")
-                or (o.get("info") or {}).get("triggerPrice")
-                or o.get("price")
-            )
-        ]
-        if not stop_orders:
-            continue
-        for o in stop_orders:
-            oid = o.get("id")
-            if not oid:
-                continue
-            try:
-                exchange.cancel_order(oid, symbol)
-            except Exception as e:
-                logger.warning("move_sl_to_entry cancel error for %s: %s", pair, e)
         exit_side = "sell" if side == "buy" else "buy"
+        qty_close = qty_total * 0.2
+        try:
+            step = qty_step(exchange, symbol)
+            qty_close = round_step(qty_close, step)
+        except Exception:
+            pass
         try:
             exchange.create_order(
                 symbol,
-                "STOP_MARKET",
+                "MARKET",
                 exit_side,
+                qty_close,
                 None,
-                None,
-                {"closePosition": True, "stopPrice": entry},
+                {"reduceOnly": True},
             )
         except Exception as e:
-            logger.warning("move_sl_to_entry create_order error for %s: %s", pair, e)
+            logger.warning("move_sl_to_entry close_partial error for %s: %s", pair, e)
+            continue
+        try:
+            _place_sl_tp(exchange, symbol, side, qty_total, entry, tp)
+        except Exception as e:
+            logger.warning("move_sl_to_entry place_sl_tp error for %s: %s", pair, e)
 
 
 def live_loop(
     limit: int = 30,
     cancel_interval: int = 600,   # cancel stale orders (10m)
     add_interval: int = 60,       # SL/TP add (1m)
-    move_sl_interval: int = 300,  # move SL to entry (5m)
+    move_sl_interval: int = 600,  # move SL to entry (10m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
 
     - Orchestrator job runs at the top of every hour.
     - Cancel stale limit orders mỗi 10 phút.
     - Check để add SL/TP mỗi 1 phút.
+    - Kiểm tra dời SL về entry mỗi 10 phút.
     """
 
     if BlockingScheduler is None:
@@ -795,12 +676,12 @@ def live_loop(
                 "Limit expiry check finished in %.2fs", time.time() - start
             )
 
-    # def move_sl_job():
-    #     logger.info("Scheduled move SL to entry check")
-    #     try:
-    #         move_sl_to_entry(ex)
-    #     except Exception:
-    #         logger.exception("move_sl_job error")
+    def move_sl_job():
+        logger.info("Scheduled move SL to entry check")
+        try:
+            move_sl_to_entry(ex)
+        except Exception:
+            logger.exception("move_sl_job error")
 
     scheduler.add_job(run_job, CronTrigger(minute="0"))
 
@@ -808,7 +689,7 @@ def live_loop(
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
     scheduler.add_job(expiry_job, "interval", seconds=60)
-    # scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
+    scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
     scheduler.start()
