@@ -15,6 +15,7 @@ def test_build_payload_from_env_pairs(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
@@ -27,6 +28,7 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=1)
     pairs = {c["p"] for c in payload["coins"]}
@@ -39,6 +41,7 @@ def test_build_payload_skips_positions(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [{"pair": "BBBUSDT"}])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
@@ -57,8 +60,24 @@ def test_build_payload_preserves_sl(monkeypatch):
     monkeypatch.setattr(pb, "positions_snapshot", fake_positions_snapshot)
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=0)
     positions = payload["positions"]
     assert "sl" in positions[0] and positions[0]["sl"] is None
     assert positions[1]["sl"] == 1.5
+
+
+def test_build_payload_includes_events(monkeypatch):
+    monkeypatch.setenv("COIN_PAIRS", "AAA")
+    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+
+    sample_events = [
+        {"time": "2024-01-01T00:00:00Z", "title": "CPI", "impact": "high"}
+    ]
+    monkeypatch.setattr(pb, "event_snapshot", lambda: sample_events)
+
+    payload = pb.build_payload(DummyExchange(), limit=1)
+    assert payload["events"] == sample_events

@@ -24,6 +24,7 @@ from exchange_utils import (
 )
 from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
+from events import event_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,7 @@ def build_payload(
                 logger.warning("coin_payload failed for %s: %s", sym, e)
     payload = {
         "time": time_payload(),
+        "events": event_snapshot(),
         "coins": [drop_empty(c) for c in coins],
         "positions": positions,
     }
