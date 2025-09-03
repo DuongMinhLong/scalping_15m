@@ -12,7 +12,7 @@ class DummyExchange:
 
 def test_build_payload_from_env_pairs(monkeypatch):
     monkeypatch.setenv("COIN_PAIRS", "AAA,BBB")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "get_open_position_pairs", lambda ex: set())
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
@@ -25,7 +25,7 @@ def test_build_payload_from_env_pairs(monkeypatch):
 
 def test_build_payload_handles_numeric_prefix(monkeypatch):
     monkeypatch.setenv("COIN_PAIRS", "1000PEPE")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "get_open_position_pairs", lambda ex: set())
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
@@ -38,39 +38,30 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
 
 def test_build_payload_skips_positions(monkeypatch):
     monkeypatch.setenv("COIN_PAIRS", "CCCUSDT,BBBUSDT,AAAUSDT")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [{"pair": "BBBUSDT"}])
+    monkeypatch.setattr(pb, "get_open_position_pairs", lambda ex: {"BBBUSDT"})
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
-    assert pairs == {"CCCUSDT", "AAAUSDT", "BBBUSDT"}
+    assert pairs == {"CCCUSDT", "AAAUSDT"}
 
 
-def test_build_payload_preserves_sl(monkeypatch):
+def test_build_payload_excludes_positions(monkeypatch):
     monkeypatch.setenv("COIN_PAIRS", "")
-
-    def fake_positions_snapshot(ex):
-        return [
-            {"pair": "AAAUSDT", "side": "buy", "entry": 1.0, "sl": None},
-            {"pair": "BBBUSDT", "side": "sell", "entry": 2.0, "sl": 1.5},
-        ]
-
-    monkeypatch.setattr(pb, "positions_snapshot", fake_positions_snapshot)
+    monkeypatch.setattr(pb, "get_open_position_pairs", lambda ex: set())
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=0)
-    positions = payload["positions"]
-    assert "sl" in positions[0] and positions[0]["sl"] is None
-    assert positions[1]["sl"] == 1.5
+    assert "positions" not in payload
 
 
 def test_build_payload_includes_events(monkeypatch):
     monkeypatch.setenv("COIN_PAIRS", "AAA")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "get_open_position_pairs", lambda ex: set())
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
 

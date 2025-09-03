@@ -53,9 +53,6 @@ def test_run_sends_coins_only(monkeypatch):
         build_called["called"] = True
         return {
             "coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}],
-            "positions": [
-                {"pair": "ETHUSDT", "entry": 1, "sl": 0.9, "tp": 1.1, "pnl": 0.0}
-            ],
         }
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
@@ -80,7 +77,7 @@ def test_run_sends_coins_only(monkeypatch):
     payload_str = payload_str[payload_str.find("{") :]
     data = json.loads(payload_str)
     assert any(c.get("p") == "ETHUSDT" for c in data.get("coins", []))
-    assert data.get("positions")
+    assert "positions" not in data
     assert res == {
         "ts": "ts",
         "live": False,
@@ -229,7 +226,7 @@ def test_run_closes_positions(monkeypatch):
     monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
     monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
     monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
-    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"positions": ["p"]})
+    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"coins": [{"p": "AAAUSDT"}]})
     monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
     monkeypatch.setattr(orch, "extract_content", lambda r: "")
     monkeypatch.setattr(
