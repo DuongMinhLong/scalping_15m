@@ -13,12 +13,13 @@ Specify the trading pairs to analyse via the `COIN_PAIRS` variable in your `.env
 ### Economic events API
 
 Upcoming macroeconomic events are fetched from the
-[Financial Modeling Prep](https://financialmodelingprep.com/developer/docs/economic-calendar-api/)
-API. Set the `FMP_API_KEY` environment variable with your API token to
-enable event retrieval:
+[Trading Economics](https://tradingeconomics.com/api/) calendar API. Set
+the `TE_API_KEY` environment variable with your API token to enable
+event retrieval. If the variable is not set, the public `guest:guest`
+key is used (subject to rate limits):
 
 ```env
-FMP_API_KEY=your_api_key_here
+TE_API_KEY=your_api_key_here
 ```
 
 If the key is missing or the request fails, the bot will continue
