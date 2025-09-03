@@ -37,18 +37,14 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
             continue
         entry = item.get("entry")
         sl = item.get("sl")
-        tp1 = item.get("tp1") if item.get("tp1") is not None else item.get("tp")
-        tp2 = item.get("tp2")
-        tp3 = item.get("tp3")
+        tp = item.get("tp") if item.get("tp") is not None else item.get("tp1")
         risk = item.get("risk")
         conf = item.get("conf")
         rr = item.get("rr")
         try:
             entry = float(entry) if entry is not None else None
             sl = float(sl) if sl is not None else None
-            tp1 = float(tp1) if tp1 not in (None, "") else None
-            tp2 = float(tp2) if tp2 not in (None, "") else None
-            tp3 = float(tp3) if tp3 not in (None, "") else None
+            tp = float(tp) if tp not in (None, "") else None
             risk = float(risk) if risk not in (None, "") else None
             conf = float(conf) if conf not in (None, "") else None
             rr = float(rr) if rr not in (None, "") else None
@@ -59,29 +55,17 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
         if risk is not None and not (0 < risk < 1):
             continue
         side = "buy" if entry > sl else "sell"
-        if tp1 is not None and (
-            (side == "buy" and tp1 <= entry)
-            or (side == "sell" and tp1 >= entry)
+        if tp is not None and (
+            (side == "buy" and tp <= entry)
+            or (side == "sell" and tp >= entry)
         ):
             continue
-        if tp2 is not None and (
-            (side == "buy" and tp2 <= entry)
-            or (side == "sell" and tp2 >= entry)
-        ):
-            tp2 = None
-        if tp3 is not None and (
-            (side == "buy" and tp3 <= entry)
-            or (side == "sell" and tp3 >= entry)
-        ):
-            tp3 = None
         coins.append(
             {
                 "pair": pair,
                 "entry": entry,
                 "sl": sl,
-                "tp1": tp1,
-                "tp2": tp2,
-                "tp3": tp3,
+                "tp": tp,
                 "risk": risk,
                 "conf": conf,
                 "rr": rr,
@@ -239,21 +223,15 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
     for a in acts:
         entry = a.get("entry")
         sl = a.get("sl")
-        tp1 = a.get("tp1")
-        tp2 = a.get("tp2")
-        tp3 = a.get("tp3")
+        tp = a.get("tp") if a.get("tp") is not None else a.get("tp1")
         risk = a.get("risk")
         if not (
             isinstance(entry, (int, float))
             and isinstance(sl, (int, float))
-            and isinstance(tp1, (int, float))
+            and isinstance(tp, (int, float))
         ):
             continue
-        a["tp1"] = rfloat(tp1, 8)
-        if isinstance(tp2, (int, float)):
-            a["tp2"] = rfloat(tp2, 8)
-        if isinstance(tp3, (int, float)):
-            a["tp3"] = rfloat(tp3, 8)
+        a["tp"] = rfloat(tp, 8)
         rf = (
             float(risk) if isinstance(risk, (int, float)) and risk > 0 else DEFAULT_RISK_FRAC
         )
@@ -271,7 +249,7 @@ def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[
             continue  # bỏ qua nếu khối lượng bằng 0
         a["qty"] = rfloat(qty, 8)
         a["risk"] = rfloat(rf, 6)
-        side = infer_side(float(entry), float(sl), float(tp1))
+        side = infer_side(float(entry), float(sl), float(tp))
         if side in {"buy", "sell"}:
             a["side"] = side
             out.append(a)

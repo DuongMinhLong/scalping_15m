@@ -104,9 +104,7 @@ def positions_snapshot(exchange) -> List[Dict]:
         side = "buy" if amt_val > 0 else "sell"
         qty = abs(amt_val)
         sl = None
-        tp1 = None
-        tp2 = None
-        tp3 = None
+        tp = None
         pnl = p.get("unrealizedPnl") or (p.get("info") or {}).get(
             "unrealizedProfit"
         )
@@ -171,22 +169,17 @@ def positions_snapshot(exchange) -> List[Dict]:
             if sl_prices:
                 sl = rfloat(min(sl_prices) if side == "buy" else max(sl_prices))
             if tp_prices:
-                tp_sorted = sorted(tp_prices) if side == "buy" else sorted(tp_prices, reverse=True)
-                tp1 = rfloat(tp_sorted[0])
-                if len(tp_sorted) > 1:
-                    tp2 = rfloat(tp_sorted[1])
-                if len(tp_sorted) > 2:
-                    tp3 = rfloat(tp_sorted[2])
+                tp_sorted = (
+                    sorted(tp_prices) if side == "buy" else sorted(tp_prices, reverse=True)
+                )
+                tp = rfloat(tp_sorted[0])
         data = drop_empty(
             {
                 "pair": pair,
                 "side": side,
                 "entry": rfloat(entry_price),
                 "qty": rfloat(qty),
-                "tp": tp1,
-                "tp1": tp1,
-                "tp2": tp2,
-                "tp3": tp3,
+                "tp": tp,
                 "pnl": pnl,
             }
         )

@@ -28,7 +28,6 @@ def test_positions_snapshot_includes_close_position_orders():
     assert pos["qty"] == 1.0
     assert pos["sl"] == 90.0
     assert pos["tp"] == 110.0
-    assert pos["tp1"] == 110.0
 
 
 class DummyExchangeNoStops:
