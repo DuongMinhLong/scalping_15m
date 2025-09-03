@@ -137,7 +137,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
                     "side": "buy",
                     "entry": 1,
                     "sl": 0.9,
-                    "tp1": 1.1,
+                    "tp": 1.1,
                     "qty": 1,
                 }
             ]
@@ -198,7 +198,7 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
     monkeypatch.setattr(trading_utils, "qty_step", lambda e, s: 1)
     monkeypatch.setattr(trading_utils, "calc_qty", lambda *a, **k: 1)
-    monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp1: "buy")
+    monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp: "buy")
 
     orch.run(run_live=True, ex=ex)
 
@@ -248,8 +248,8 @@ def test_run_handles_partial_and_move_sl(monkeypatch):
 
     called = {}
 
-    def fake_place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2=None, tp3=None):
-        called["args"] = (symbol, side, qty, sl, tp1, tp2, tp3)
+    def fake_place_sl_tp(exchange, symbol, side, qty, sl, tp):
+        called["args"] = (symbol, side, qty, sl, tp)
 
     monkeypatch.setattr(orch, "_place_sl_tp", fake_place_sl_tp)
 
@@ -258,7 +258,7 @@ def test_run_handles_partial_and_move_sl(monkeypatch):
     assert ex.orders == [
         ("BTC/USDT", "MARKET", "sell", 1.0, None, {"reduceOnly": True})
     ]
-    assert called.get("args") == ("BTC/USDT", "buy", 2, 0.95, 1.1, None, None)
+    assert called.get("args") == ("BTC/USDT", "buy", 2, 0.95, 1.1)
     assert res["closed_partial"]
     assert res["moved_sl"]
 
@@ -351,7 +351,7 @@ def test_run_respects_max_open_positions(monkeypatch):
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2, 3, 4)
+    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2)
     assert ex.cancelled == []
     assert ex.orders == [
         (
@@ -366,25 +366,9 @@ def test_place_sl_tp(side, exit_side):
             "BTC/USDT",
             "LIMIT",
             exit_side,
-            3.0,
+            10,
             2,
             {"reduceOnly": True},
-        ),
-        (
-            "BTC/USDT",
-            "LIMIT",
-            exit_side,
-            5.0,
-            3,
-            {"reduceOnly": True},
-        ),
-        (
-            "BTC/USDT",
-            "TAKE_PROFIT_MARKET",
-            exit_side,
-            2.0,
-            None,
-            {"stopPrice": 4, "reduceOnly": True},
         ),
     ]
 
@@ -396,9 +380,26 @@ class ExistingStopExchange(CaptureExchange):
 
 def test_place_sl_tp_cancels_existing():
     ex = ExistingStopExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 1, 2, 3, 4)
+    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 1, 2)
     assert ex.cancelled == [("old1", "BTC/USDT")]
-    assert len(ex.orders) == 4
+    assert ex.orders == [
+        (
+            "BTC/USDT",
+            "STOP_MARKET",
+            "sell",
+            None,
+            None,
+            {"stopPrice": 1, "closePosition": True},
+        ),
+        (
+            "BTC/USDT",
+            "LIMIT",
+            "sell",
+            10,
+            2,
+            {"reduceOnly": True},
+        ),
+    ]
 
 
 def test_add_sl_tp_from_json(tmp_path, monkeypatch):
@@ -412,9 +413,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         "limit": 1,
         "qty": 10,
         "sl": 0.9,
-        "tp1": 1.1,
-        "tp2": 1.2,
-        "tp3": 1.3,
+        "tp": 1.1,
     }
     (limit_dir / "BTCUSDT.json").write_text(json.dumps(data))
     ex = FilledExchange()
@@ -433,25 +432,9 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             "BTC/USDT",
             "LIMIT",
             "sell",
-            3.0,
+            10,
             1.1,
             {"reduceOnly": True},
-        ),
-        (
-            "BTC/USDT",
-            "LIMIT",
-            "sell",
-            5.0,
-            1.2,
-            {"reduceOnly": True},
-        ),
-        (
-            "BTC/USDT",
-            "TAKE_PROFIT_MARKET",
-            "sell",
-            2.0,
-            None,
-            {"stopPrice": 1.3, "reduceOnly": True},
         ),
     ]
 

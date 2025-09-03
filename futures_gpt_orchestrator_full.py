@@ -102,13 +102,12 @@ def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
         logger.warning("cancel_all_orders_for_pair unlink error %s: %s", fp, e)
 
 
-def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2=None, tp3=None):
-    """Place stop-loss and up to three take-profit orders.
+def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
+    """Place stop-loss and take-profit orders for a position.
 
-    If ``qty`` is ``None`` or only ``tp1`` is provided, a single take-profit
-    order closing the entire position is used. When ``tp2``/``tp3`` are given
-    and ``qty`` is provided, the position is split 30/50/20 percent across the
-    three targets using reduce-only orders.
+    When ``qty`` is ``None`` the TP order closes the entire position using
+    ``TAKE_PROFIT_MARKET``. Otherwise a reduce-only limit order is placed for
+    the given ``qty``.
     """
 
     exit_side = "sell" if side == "buy" else "buy"
@@ -144,47 +143,17 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp1, tp2=None, tp3=None):
                 exit_side,
                 None,
                 None,
-                {**params_close, "stopPrice": tp1},
+                {**params_close, "stopPrice": tp},
             )
-        elif tp2 is None and tp3 is None:
+        else:
             exchange.create_order(
                 symbol,
                 "LIMIT",
                 exit_side,
                 qty,
-                tp1,
+                tp,
                 {"reduceOnly": True},
             )
-        else:
-            q1 = qty * 0.3
-            q2 = qty * 0.5
-            q3 = qty - q1 - q2
-            exchange.create_order(
-                symbol,
-                "LIMIT",
-                exit_side,
-                q1,
-                tp1,
-                {"reduceOnly": True},
-            )
-            if tp2 is not None:
-                exchange.create_order(
-                    symbol,
-                    "LIMIT",
-                    exit_side,
-                    q2,
-                    tp2,
-                    {"reduceOnly": True},
-                )
-            if tp3 is not None:
-                exchange.create_order(
-                    symbol,
-                    "TAKE_PROFIT_MARKET",
-                    exit_side,
-                    q3,
-                    None,
-                    {"reduceOnly": True, "stopPrice": tp3},
-                )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
             logger.warning(
@@ -352,11 +321,9 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             ccxt_sym = to_ccxt_symbol(pair)
             side = pos.get("side")
             qty_total = pos.get("qty")
-            tp1 = pos.get("tp1") or pos.get("tp")
-            tp2 = pos.get("tp2")
-            tp3 = pos.get("tp3")
+            tp = pos.get("tp")
             try:
-                _place_sl_tp(ex, ccxt_sym, side, qty_total, sl, tp1, tp2, tp3)
+                _place_sl_tp(ex, ccxt_sym, side, qty_total, sl, tp)
                 moved_sl.append({"pair": pair, "sl": sl})
             except Exception as e:
                 logger.warning("move_sl error for %s: %s", pair, e)
@@ -400,14 +367,12 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             side = c.get("side")
             entry = c.get("entry")
             sl = c.get("sl")
-            tp1 = c.get("tp1")
-            tp2 = c.get("tp2")
-            tp3 = c.get("tp3")
+            tp = c.get("tp")
             qty = c.get("qty")
             if (
                 side not in ("buy", "sell")
                 or pair in pos_pairs_live
-                or tp1 is None
+                or tp is None
             ):
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
@@ -428,9 +393,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                             "limit": entry,
                             "qty": qty,
                             "sl": sl,
-                            "tp1": tp1,
-                            "tp2": tp2,
-                            "tp3": tp3,
+                            "tp": tp,
                             "expiry": expiry_sec,
                             "ts": time.time(),
                         }
@@ -443,9 +406,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
                         "side": side,
                         "entry": entry,
                         "sl": sl,
-                        "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
+                        "tp": tp,
                         "qty": qty,
                         "entry_id": entry_order.get("id"),
                         "expiry": expiry_min,
@@ -665,10 +626,8 @@ def add_sl_tp_from_json(exchange):
         side = data.get("side")
         qty = data.get("qty")
         sl = data.get("sl")
-        tp1 = data.get("tp1")
-        tp2 = data.get("tp2")
-        tp3 = data.get("tp3")
-        if not (pair and order_id and side and qty and sl and tp1):
+        tp = data.get("tp") if data.get("tp") is not None else data.get("tp1")
+        if not (pair and order_id and side and qty and sl and tp):
             continue
         ccxt_sym = to_ccxt_symbol(pair)
         try:
@@ -679,7 +638,7 @@ def add_sl_tp_from_json(exchange):
         status = (o.get("status") or "").lower()
         if status != "closed":
             continue
-        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp1, tp2, tp3)
+        _place_sl_tp(exchange, ccxt_sym, side, qty, sl, tp)
         try:
             fp.unlink()
         except Exception as e:
