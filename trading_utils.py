@@ -15,18 +15,12 @@ DEFAULT_RISK_FRAC = env_float("DEFAULT_RISK", 0.005)
 def parse_mini_actions(text: str) -> Dict[str, Any]:
     """Parse MINI model JSON output into trading instructions.
 
-    The result contains keys ``coins`` (new entries), ``close`` (full closes),
-    ``move_sl`` (adjust stop losses), ``close_partial`` (partial closes) and
-    ``close_all`` (boolean flag to close all positions). Invalid entries are
-    ignored silently.
+    Currently only ``coins`` entries are supported. Any additional fields in
+    the JSON output are ignored silently.
     """
 
     data = try_extract_json(text)
     coins_in = data.get("coins", []) if isinstance(data, dict) else []
-    close_in = data.get("close", []) if isinstance(data, dict) else []
-    move_sl_in = data.get("move_sl", []) if isinstance(data, dict) else []
-    close_part_in = data.get("close_partial", []) if isinstance(data, dict) else []
-    close_all_flag = bool(data.get("close_all")) if isinstance(data, dict) else False
 
     coins: List[Dict[str, Any]] = []
     for item in coins_in:
@@ -37,7 +31,7 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
             continue
         entry = item.get("entry")
         sl = item.get("sl")
-        tp = item.get("tp") if item.get("tp") is not None else item.get("tp1")
+        tp = item.get("tp")
         risk = item.get("risk")
         conf = item.get("conf")
         rr = item.get("rr")
@@ -50,7 +44,7 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
             rr = float(rr) if rr not in (None, "") else None
         except Exception:
             continue
-        if None in (entry, sl) or entry == sl:
+        if None in (entry, sl, tp) or entry == sl:
             continue
         if risk is not None and not (0 < risk < 1):
             continue
@@ -72,47 +66,8 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
             }
         )
 
-    close: List[Dict[str, Any]] = []
-    for item in close_in:
-        if not isinstance(item, dict):
-            continue
-        pair = (item.get("pair") or "").upper().replace("/", "")
-        if pair:
-            close.append({"pair": pair})
-
-    move_sl: List[Dict[str, Any]] = []
-    for item in move_sl_in:
-        if not isinstance(item, dict):
-            continue
-        pair = (item.get("pair") or "").upper().replace("/", "")
-        sl_val = item.get("sl")
-        try:
-            sl_val = float(sl_val)
-        except Exception:
-            continue
-        if pair:
-            move_sl.append({"pair": pair, "sl": sl_val})
-
-    close_partial: List[Dict[str, Any]] = []
-    for item in close_part_in:
-        if not isinstance(item, dict):
-            continue
-        pair = (item.get("pair") or "").upper().replace("/", "")
-        pct = item.get("pct")
-        try:
-            pct = float(pct)
-        except Exception:
-            continue
-        if not pair or not (0 < pct <= 100):
-            continue
-        close_partial.append({"pair": pair, "pct": pct})
-
     return {
         "coins": coins,
-        "close": close,
-        "move_sl": move_sl,
-        "close_partial": close_partial,
-        "close_all": close_all_flag,
     }
 
 
@@ -214,16 +169,16 @@ def infer_side(entry: float, sl: float, tp: Optional[float]) -> Optional[str]:
 
 
 def enrich_tp_qty(exchange, acts: List[Dict[str, Any]], capital: float) -> List[Dict[str, Any]]:
-    """Compute qty for each action, requiring TP1 from the model.
+    """Compute qty for each action, requiring TP from the model.
 
-    Actions missing TP1 are skipped.
+    Actions missing a take-profit are skipped.
     """
 
     out: List[Dict[str, Any]] = []
     for a in acts:
         entry = a.get("entry")
         sl = a.get("sl")
-        tp = a.get("tp") if a.get("tp") is not None else a.get("tp1")
+        tp = a.get("tp")
         risk = a.get("risk")
         if not (
             isinstance(entry, (int, float))

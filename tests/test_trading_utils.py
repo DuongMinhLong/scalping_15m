@@ -19,25 +19,23 @@ def test_to_ccxt_symbol_with_exchange_markets():
     assert trading_utils.to_ccxt_symbol("FOOUSDC", dummy) == "FOO/USDC"
 
 
-def test_parse_mini_actions_handles_close():
+def test_parse_mini_actions_coins_only():
     text = (
         "{"
-        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,'
-        '"risk":0.1}],'
-        '"close":[{"pair":"ETHUSDT"}],'
-        '"move_sl":[{"pair":"XRPUSDT","sl":0.95}],'
-        '"close_partial":[{"pair":"LTCUSDT","pct":25}],'
-        '"close_all":true}'
+        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,"risk":0.1}],'
+        '"close":[{"pair":"ETHUSDT"}]}'
     )
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
     assert res["coins"][0]["tp"] == 1.05
     assert res["coins"][0]["risk"] == 0.1
-    assert "expiry" not in res["coins"][0]
-    assert res["close"] == [{"pair": "ETHUSDT"}]
-    assert res["move_sl"] == [{"pair": "XRPUSDT", "sl": 0.95}]
-    assert res["close_partial"] == [{"pair": "LTCUSDT", "pct": 25.0}]
-    assert res["close_all"] is True
+    assert "close" not in res
+
+
+def test_parse_mini_actions_requires_tp():
+    text = '{"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp1":1.05}]}'
+    res = trading_utils.parse_mini_actions(text)
+    assert res["coins"] == []
 
 
 def test_enrich_tp_qty_keeps_tp(monkeypatch):
@@ -101,3 +99,4 @@ def test_enrich_tp_qty_skips_when_tp_missing(monkeypatch):
     acts = [{"pair": "BTCUSDT", "entry": 100, "sl": 90}]
     res = trading_utils.enrich_tp_qty(ex, acts, capital=1000)
     assert res == []
+

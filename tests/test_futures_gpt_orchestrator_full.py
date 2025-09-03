@@ -87,17 +87,11 @@ def test_run_sends_coins_only(monkeypatch):
         "capital": 1000.0,
         "coins": [],
         "placed": [],
-        "closed": [],
-        "moved_sl": [],
-        "closed_partial": [],
     }
     assert "ts_orders.json" in fake_save_text.saved
     data = json.loads(fake_save_text.saved["ts_orders.json"])
     assert data["coins"] == []
     assert data["placed"] == []
-    assert data["closed"] == []
-    assert data["moved_sl"] == []
-    assert data["closed_partial"] == []
 
 
 def test_run_cancels_existing_orders(monkeypatch, tmp_path):
@@ -205,111 +199,6 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     assert len(ex.orders) == 0
 
 
-def test_run_handles_partial_and_move_sl(monkeypatch):
-    ex = CaptureExchange()
-    monkeypatch.setattr(orch, "load_env", lambda: None)
-    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
-    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
-    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
-
-    def fake_build_payload(ex2, limit):
-        return {
-            "coins": [],
-            "positions": [
-                {
-                    "pair": "BTCUSDT",
-                    "side": "buy",
-                    "entry": 1,
-                    "sl": 0.9,
-                    "tp": 1.1,
-                    "pnl": 0.0,
-                    "qty": 2,
-                }
-            ],
-        }
-
-    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
-    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
-    monkeypatch.setattr(orch, "extract_content", lambda r: "")
-    monkeypatch.setattr(
-        orch,
-        "parse_mini_actions",
-        lambda text: {
-            "coins": [],
-            "close": [],
-            "move_sl": [{"pair": "BTCUSDT", "sl": 0.95}],
-            "close_partial": [{"pair": "BTCUSDT", "pct": 50}],
-            "close_all": False,
-        },
-    )
-    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
-    monkeypatch.setattr(orch, "qty_step", lambda e, s: 1)
-    monkeypatch.setattr(orch, "round_step", lambda q, s: q)
-
-    called = {}
-
-    def fake_place_sl_tp(exchange, symbol, side, qty, sl, tp):
-        called["args"] = (symbol, side, qty, sl, tp)
-
-    monkeypatch.setattr(orch, "_place_sl_tp", fake_place_sl_tp)
-
-    res = orch.run(run_live=True, ex=ex)
-
-    assert ex.orders == [
-        ("BTC/USDT", "MARKET", "sell", 1.0, None, {"reduceOnly": True})
-    ]
-    assert called.get("args") == ("BTC/USDT", "buy", 2, 0.95, 1.1)
-    assert res["closed_partial"]
-    assert res["moved_sl"]
-
-
-def test_run_handles_close_all(monkeypatch):
-    ex = CaptureExchange()
-    monkeypatch.setattr(orch, "load_env", lambda: None)
-    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
-    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
-    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
-
-    def fake_build_payload(ex2, limit):
-        return {
-            "coins": [],
-            "positions": [
-                {
-                    "pair": "ETHUSDT",
-                    "side": "sell",
-                    "entry": 1,
-                    "sl": 1.1,
-                    "tp": 0.9,
-                    "pnl": 0.0,
-                    "qty": 3,
-                }
-            ],
-        }
-
-    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
-    monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
-    monkeypatch.setattr(orch, "extract_content", lambda r: "")
-    monkeypatch.setattr(
-        orch,
-        "parse_mini_actions",
-        lambda text: {
-            "coins": [],
-            "close": [],
-            "move_sl": [],
-            "close_partial": [],
-            "close_all": True,
-        },
-    )
-    monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
-
-    res = orch.run(run_live=True, ex=ex)
-
-    assert ex.orders == [
-        ("ETH/USDT", "MARKET", "buy", None, None, {"reduceOnly": True, "closePosition": True})
-    ]
-    assert res["closed"] == [{"pair": "ETHUSDT"}]
-
-
 def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
@@ -342,9 +231,6 @@ def test_run_respects_max_open_positions(monkeypatch):
         "capital": 1000.0,
         "coins": [],
         "placed": [],
-        "closed": [],
-        "moved_sl": [],
-        "closed_partial": [],
     }
 
 
@@ -445,20 +331,26 @@ class BreakEvenExchange(CaptureExchange):
         self.cancelled = []
 
     def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 100}]
+        return [{"symbol": "BTC/USDT", "contracts": 10, "entryPrice": 100}]
 
     def fetch_open_orders(self, symbol):
         return [
             {
                 "id": "sl1",
                 "symbol": symbol,
-                "reduceOnly": True,
+                "info": {"closePosition": True},
                 "stopPrice": 90,
-            }
+            },
+            {
+                "id": "tp1",
+                "symbol": symbol,
+                "info": {"closePosition": True},
+                "stopPrice": 120,
+            },
         ]
 
     def fetch_ticker(self, symbol):
-        return {"last": 110}
+        return {"last": 111}
 
     def cancel_order(self, oid, sym):
         self.cancelled.append((oid, sym))
@@ -466,9 +358,12 @@ class BreakEvenExchange(CaptureExchange):
 
 def test_move_sl_to_entry(monkeypatch):
     ex = BreakEvenExchange()
+    monkeypatch.setattr(orch, "qty_step", lambda e, s: 1)
+    monkeypatch.setattr(orch, "round_step", lambda q, s: q)
     orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT")]
+    assert ex.cancelled == [("sl1", "BTC/USDT"), ("tp1", "BTC/USDT")]
     assert ex.orders == [
+        ("BTC/USDT", "MARKET", "sell", 2.0, None, {"reduceOnly": True}),
         (
             "BTC/USDT",
             "STOP_MARKET",
@@ -476,89 +371,15 @@ def test_move_sl_to_entry(monkeypatch):
             None,
             None,
             {"stopPrice": 100, "closePosition": True},
-        )
-    ]
-
-
-class BreakEvenExchangeShort(CaptureExchange):
-    def __init__(self):
-        super().__init__()
-        self.cancelled = []
-
-    def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": -1, "entryPrice": 100}]
-
-    def fetch_open_orders(self, symbol):
-        return [
-            {
-                "id": "sl1",
-                "symbol": symbol,
-                "reduceOnly": True,
-                "stopPrice": 110,
-            }
-        ]
-
-    def fetch_ticker(self, symbol):
-        return {"last": 90}
-
-    def cancel_order(self, oid, sym):
-        self.cancelled.append((oid, sym))
-
-
-def test_move_sl_to_entry_short(monkeypatch):
-    ex = BreakEvenExchangeShort()
-    orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT")]
-    assert ex.orders == [
+        ),
         (
             "BTC/USDT",
-            "STOP_MARKET",
-            "buy",
-            None,
-            None,
-            {"stopPrice": 100, "closePosition": True},
-        )
-    ]
-
-
-class BreakEvenExchangeTrigger(CaptureExchange):
-    def __init__(self):
-        super().__init__()
-        self.cancelled = []
-
-    def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 100}]
-
-    def fetch_open_orders(self, symbol):
-        return [
-            {
-                "id": "sl1",
-                "symbol": symbol,
-                "reduceOnly": True,
-                "triggerPrice": 90,
-            }
-        ]
-
-    def fetch_ticker(self, symbol):
-        return {"last": 110}
-
-    def cancel_order(self, oid, sym):
-        self.cancelled.append((oid, sym))
-
-
-def test_move_sl_to_entry_trigger(monkeypatch):
-    ex = BreakEvenExchangeTrigger()
-    orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT")]
-    assert ex.orders == [
-        (
-            "BTC/USDT",
-            "STOP_MARKET",
+            "TAKE_PROFIT_MARKET",
             "sell",
             None,
             None,
-            {"stopPrice": 100, "closePosition": True},
-        )
+            {"stopPrice": 120, "closePosition": True},
+        ),
     ]
 
 
