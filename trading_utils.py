@@ -54,7 +54,7 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
             continue
         if conf is None or conf < MIN_CONF:
             continue
-        if rr is None or rr <= MIN_RR:
+        if rr is None or rr < MIN_RR:
             continue
         side = "buy" if entry > sl else "sell"
         if tp is not None and (
