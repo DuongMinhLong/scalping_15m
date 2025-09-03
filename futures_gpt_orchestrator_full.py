@@ -105,9 +105,9 @@ def cancel_all_orders_for_pair(exchange, symbol: str, pair: str) -> None:
 def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
     """Place stop-loss and take-profit orders for a position.
 
-    When ``qty`` is ``None`` the TP order closes the entire position using
-    ``TAKE_PROFIT_MARKET``. Otherwise a reduce-only limit order is placed for
-    the given ``qty``.
+    Both orders use ``closePosition=True`` so the entire position is closed at
+    market once the trigger price is hit. ``qty`` is ignored and kept only for
+    backward compatibility.
     """
 
     exit_side = "sell" if side == "buy" else "buy"
@@ -136,24 +136,14 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
             None,
             {**params_close, "stopPrice": sl},
         )
-        if qty is None:
-            exchange.create_order(
-                symbol,
-                "TAKE_PROFIT_MARKET",
-                exit_side,
-                None,
-                None,
-                {**params_close, "stopPrice": tp},
-            )
-        else:
-            exchange.create_order(
-                symbol,
-                "LIMIT",
-                exit_side,
-                qty,
-                tp,
-                {"reduceOnly": True},
-            )
+        exchange.create_order(
+            symbol,
+            "TAKE_PROFIT_MARKET",
+            exit_side,
+            None,
+            None,
+            {**params_close, "stopPrice": tp},
+        )
     except OperationRejected as e:  # pragma: no cover - depends on exchange state
         if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
             logger.warning(

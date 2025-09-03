@@ -364,11 +364,11 @@ def test_place_sl_tp(side, exit_side):
         ),
         (
             "BTC/USDT",
-            "LIMIT",
+            "TAKE_PROFIT_MARKET",
             exit_side,
-            10,
-            2,
-            {"reduceOnly": True},
+            None,
+            None,
+            {"stopPrice": 2, "closePosition": True},
         ),
     ]
 
@@ -393,11 +393,11 @@ def test_place_sl_tp_cancels_existing():
         ),
         (
             "BTC/USDT",
-            "LIMIT",
+            "TAKE_PROFIT_MARKET",
             "sell",
-            10,
-            2,
-            {"reduceOnly": True},
+            None,
+            None,
+            {"stopPrice": 2, "closePosition": True},
         ),
     ]
 
@@ -430,11 +430,11 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         ),
         (
             "BTC/USDT",
-            "LIMIT",
+            "TAKE_PROFIT_MARKET",
             "sell",
-            10,
-            1.1,
-            {"reduceOnly": True},
+            None,
+            None,
+            {"stopPrice": 1.1, "closePosition": True},
         ),
     ]
 
