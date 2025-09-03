@@ -13,6 +13,8 @@ PROMPT_SYS_MINI = (
     "3. Kết hợp các yếu tố trên với xu hướng chính (1H, 4H) để đưa ra khuyến nghị: Buy / Sell / Không vào lệnh.\n"
     "4. Đề xuất Entry, Stop Loss, Take Profit (dựa trên ATR hoặc swing high/low).\n"
     "5. Đưa ra nhận xét về rủi ro và độ tin cậy của kèo."
+    "Trả về DUY NHẤT JSON: {\"coins\":[{\"pair\":\"SYMBOLUSDT\",\"entry\":0.00,\"sl\":0.00,\"tp\":0.00,\"conf\":0.0,\"rr\":0}]}.\n" 
+    "Yêu cầu : + CONF ≥ 7.0 và RR ≥ 1.5 . + SL TP phù hợp khung 15m."
 )
 
 PROMPT_USER_MINI = (

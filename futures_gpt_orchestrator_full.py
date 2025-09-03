@@ -720,13 +720,13 @@ def live_loop(
         except Exception:
             logger.exception("move_sl_job error")
 
-    scheduler.add_job(run_job, CronTrigger(minute="0"))
+    scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
 
     # Các job còn lại chạy theo interval
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
     scheduler.add_job(limit_job, "interval", seconds=add_interval)
     scheduler.add_job(expiry_job, "interval", seconds=60)
-    scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
+    # scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
 
     logger.info("Scheduler starting")
     scheduler.start()
