@@ -174,3 +174,43 @@ def test_time_payload_sessions():
     now = datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc)
     info = payload_builder.time_payload(now)
     assert info["session"] == "us"
+
+
+def test_build_m15_payload(monkeypatch):
+    import pandas as pd
+
+    def fake_fetch(exchange, symbol, timeframe, limit, since=None):
+        if timeframe == "15m":
+            periods, freq = 100, "15min"
+        elif timeframe == "1h":
+            periods, freq = 50, "1h"
+        else:
+            periods, freq = 30, "4h"
+        return pd.DataFrame(
+            {
+                "open": [1.0] * periods,
+                "high": [1.0] * periods,
+                "low": [1.0] * periods,
+                "close": [1.0] * periods,
+                "volume": [1.0] * periods,
+            },
+            index=pd.date_range("2024-01-01", periods=periods, freq=freq, tz="UTC"),
+        )
+
+    def fake_add_indicators(df):
+        df = df.copy()
+        if len(df) == 50:  # 1h
+            df["atr14"] = [0.5] * len(df)
+        else:  # 4h
+            df["atr14"] = [1.0] * len(df)
+        return df
+
+    monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
+    monkeypatch.setattr(payload_builder, "add_indicators", fake_add_indicators)
+
+    res = payload_builder.build_m15_payload(None, "BTC/USDT:USDT")
+    assert res["atr_1h"] == 0.5
+    assert res["atr_4h"] == 1.0
+    assert len(res["data_15m"]) == 100
+    first = res["data_15m"][0]
+    assert {"time", "open", "high", "low", "close", "volume"} <= set(first.keys())

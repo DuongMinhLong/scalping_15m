@@ -133,6 +133,38 @@ def build_snap(df: pd.DataFrame) -> Dict:
     }
 
 
+def build_m15_payload(exchange, symbol: str) -> Dict:
+    """Return payload with 100x15m candles plus 1h/4h ATR."""
+
+    df_15m = fetch_ohlcv_df(exchange, symbol, "15m", 100)
+    df_1h = fetch_ohlcv_df(exchange, symbol, "1h", 50)
+    df_4h = fetch_ohlcv_df(exchange, symbol, "4h", 50)
+
+    ind_1h = add_indicators(df_1h)
+    ind_4h = add_indicators(df_4h)
+
+    atr_1h = rprice(ind_1h["atr14"].iloc[-1])
+    atr_4h = rprice(ind_4h["atr14"].iloc[-1])
+
+    data_15m = [
+        {
+            "time": idx.strftime("%Y-%m-%d %H:%M"),
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+            "volume": float(row.volume),
+        }
+        for idx, row in df_15m.tail(100).iterrows()
+    ]
+
+    return {
+        "atr_1h": atr_1h,
+        "atr_4h": atr_4h,
+        "data_15m": data_15m,
+    }
+
+
 def coin_payload(exchange, symbol: str) -> Dict:
     """Build payload for a single symbol with thread-safe caching."""
 
