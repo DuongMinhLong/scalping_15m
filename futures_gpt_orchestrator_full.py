@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import time
+from datetime import timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -720,7 +721,10 @@ def live_loop(
         except Exception:
             logger.exception("move_sl_job error")
 
-    scheduler.add_job(run_job, CronTrigger(minute="0,15,30,45"))
+    scheduler.add_job(
+        run_job,
+        CronTrigger(minute="0,15,30,45", hour="8-23", timezone=timezone.utc),
+    )
 
     # Các job còn lại chạy theo interval
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
