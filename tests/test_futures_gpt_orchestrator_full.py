@@ -53,9 +53,6 @@ def test_run_sends_coins_only(monkeypatch):
         build_called["called"] = True
         return {
             "coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}],
-            "positions": [
-                {"pair": "ETHUSDT", "entry": 1, "sl": 0.9, "tp": 1.1, "pnl": 0.0}
-            ],
         }
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
@@ -64,7 +61,7 @@ def test_run_sends_coins_only(monkeypatch):
 
     def fake_send_openai(system, user, model):
         captured["user"] = user
-        return {"choices": [{"message": {"content": "{\"coins\": []}"}}]}
+        return {"choices": [{"message": {"content": '{"coins": []}'}}]}
 
     monkeypatch.setattr(orch, "send_openai", fake_send_openai)
     monkeypatch.setattr(
@@ -80,7 +77,7 @@ def test_run_sends_coins_only(monkeypatch):
     payload_str = payload_str[payload_str.find("{") :]
     data = json.loads(payload_str)
     assert any(c.get("p") == "ETHUSDT" for c in data.get("coins", []))
-    assert data.get("positions")
+    assert "positions" not in data
     assert res == {
         "ts": "ts",
         "live": False,
@@ -229,7 +226,9 @@ def test_run_closes_positions(monkeypatch):
     monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
     monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
     monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
-    monkeypatch.setattr(orch, "build_payload", lambda ex, limit: {"positions": ["p"]})
+    monkeypatch.setattr(
+        orch, "build_payload", lambda ex, limit: {"coins": [{"p": "AAAUSDT"}]}
+    )
     monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
     monkeypatch.setattr(orch, "extract_content", lambda r: "")
     monkeypatch.setattr(
@@ -254,6 +253,7 @@ def test_run_closes_positions(monkeypatch):
     ]
     assert res["closed"] == ["BTCUSDT"]
 
+
 def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
@@ -268,7 +268,9 @@ def test_run_respects_max_open_positions(monkeypatch):
     monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
     monkeypatch.setattr(orch, "cancel_unpositioned_stops", lambda e: None)
     monkeypatch.setattr(orch, "env_int", lambda k, d: 10)
-    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {f"p{i}" for i in range(11)})
+    monkeypatch.setattr(
+        orch, "get_open_position_pairs", lambda e: {f"p{i}" for i in range(11)}
+    )
     build_called = {}
 
     def fake_build_payload(*a, **k):
@@ -341,6 +343,26 @@ def test_place_sl_tp_cancels_existing():
             None,
             {"stopPrice": 2, "closePosition": True},
         ),
+    ]
+
+
+class ImmediateTriggerExchange(CaptureExchange):
+    def fetch_ticker(self, symbol):
+        return {"last": 100}
+
+
+def test_place_sl_tp_skips_immediate_trigger():
+    ex = ImmediateTriggerExchange()
+    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 110, 120)
+    assert ex.orders == [
+        (
+            "BTC/USDT",
+            "TAKE_PROFIT_MARKET",
+            "sell",
+            None,
+            None,
+            {"stopPrice": 120, "closePosition": True},
+        )
     ]
 
 

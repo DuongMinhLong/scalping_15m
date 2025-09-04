@@ -22,20 +22,43 @@ def test_to_ccxt_symbol_with_exchange_markets():
 def test_parse_mini_actions_coins_only():
     text = (
         "{"
-        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,"risk":0.1}],'
+        '"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,"risk":0.1,"conf":7,"rr":1.6}],'
         '"close":["ETHUSDT"]}'
     )
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] and res["coins"][0]["pair"] == "BTCUSDT"
     assert res["coins"][0]["tp"] == 1.05
     assert res["coins"][0]["risk"] == 0.1
+    assert res["coins"][0]["conf"] == 7
+    assert res["coins"][0]["rr"] == 1.6
     assert res["close"] == ["ETHUSDT"]
 
 
 def test_parse_mini_actions_requires_tp():
-    text = '{"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp1":1.05}]}'
+    text = (
+        '{"coins":[{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp1":1.05,"conf":7,"rr":1.6}]}'
+    )
     res = trading_utils.parse_mini_actions(text)
     assert res["coins"] == []
+
+
+def test_parse_mini_actions_filters_conf_rr():
+    text = (
+        '{"coins":['
+        '{"pair":"BTCUSDT","entry":1,"sl":0.9,"tp":1.05,"conf":6,"rr":1.6},'
+        '{"pair":"ETHUSDT","entry":1,"sl":0.9,"tp":1.05,"conf":7,"rr":1.4}'
+        ']}'
+    )
+    res = trading_utils.parse_mini_actions(text)
+    assert res["coins"] == []
+
+
+def test_parse_mini_actions_allows_equal_rr():
+    text = (
+        '{"coins":[{"pair":"AVAXUSDT","entry":25.28,"sl":24.90,"tp":25.85,"conf":7.5,"rr":1.5}]}'
+    )
+    res = trading_utils.parse_mini_actions(text)
+    assert res["coins"]
 
 
 def test_enrich_tp_qty_keeps_tp(monkeypatch):
