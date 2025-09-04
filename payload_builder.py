@@ -164,7 +164,7 @@ def coin_payload(exchange, symbol: str) -> Dict:
 
     payload = {
         "pair": norm_pair_symbol(symbol),
-        "m15": _tf_with_cache(exchange, symbol, "15m", CACHE_M15, LOCK_M15, limit=100),
+        "m15": _tf_with_cache(exchange, symbol, "15m", CACHE_M15, LOCK_M15, limit=200),
         "h1": _tf_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1, limit=1),
         "h4": _tf_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4, limit=1),
         "funding": funding_snapshot(exchange, symbol),
