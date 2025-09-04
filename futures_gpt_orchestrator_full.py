@@ -44,7 +44,11 @@ from env_utils import (
 from exchange_utils import make_exchange
 from openai_client import extract_content, send_openai
 from payload_builder import build_payload
-from positions import _norm_pair_from_symbol, get_open_position_pairs, positions_snapshot
+from positions import (
+    _norm_pair_from_symbol,
+    get_open_position_pairs,
+    positions_snapshot,
+)
 from prompts import build_prompts_mini
 from trading_utils import (
     enrich_tp_qty,
@@ -129,29 +133,65 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
             logger.warning("_place_sl_tp cancel_order error for %s: %s", symbol, e)
 
     try:
-        exchange.create_order(
-            symbol,
-            "STOP_MARKET",
-            exit_side,
-            None,
-            None,
-            {**params_close, "stopPrice": sl},
-        )
-        exchange.create_order(
-            symbol,
-            "TAKE_PROFIT_MARKET",
-            exit_side,
-            None,
-            None,
-            {**params_close, "stopPrice": tp},
-        )
-    except OperationRejected as e:  # pragma: no cover - depends on exchange state
-        if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
-            logger.warning(
-                "_place_sl_tp reached max stop order limit for %s: %s", symbol, e
-            )
+        ticker = exchange.fetch_ticker(symbol)
+        price = float(ticker.get("last") or ticker.get("close"))
+    except Exception as e:  # pragma: no cover - network or exchange error
+        logger.warning("_place_sl_tp fetch_ticker error for %s: %s", symbol, e)
+        price = None
+
+    sl_ok = True
+    tp_ok = True
+    if price is not None:
+        if side == "buy":
+            sl_ok = sl < price
+            tp_ok = tp > price
         else:
-            raise
+            sl_ok = sl > price
+            tp_ok = tp < price
+
+    if sl_ok:
+        try:
+            exchange.create_order(
+                symbol,
+                "STOP_MARKET",
+                exit_side,
+                None,
+                None,
+                {**params_close, "stopPrice": sl},
+            )
+        except OperationRejected as e:  # pragma: no cover - depends on exchange state
+            if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
+                logger.warning(
+                    "_place_sl_tp reached max stop order limit for %s: %s", symbol, e
+                )
+            else:
+                raise
+    else:
+        logger.warning(
+            "_place_sl_tp skipping SL for %s price=%s sl=%s", symbol, price, sl
+        )
+
+    if tp_ok:
+        try:
+            exchange.create_order(
+                symbol,
+                "TAKE_PROFIT_MARKET",
+                exit_side,
+                None,
+                None,
+                {**params_close, "stopPrice": tp},
+            )
+        except OperationRejected as e:  # pragma: no cover - depends on exchange state
+            if getattr(e, "code", None) == -4045 or "max stop order" in str(e).lower():
+                logger.warning(
+                    "_place_sl_tp reached max stop order limit for %s: %s", symbol, e
+                )
+            else:
+                raise
+    else:
+        logger.warning(
+            "_place_sl_tp skipping TP for %s price=%s tp=%s", symbol, price, tp
+        )
 
 
 # Default limit increased to 30 to expand the number of coins processed
@@ -267,11 +307,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             sl = c.get("sl")
             tp = c.get("tp")
             qty = c.get("qty")
-            if (
-                side not in ("buy", "sell")
-                or pair in pos_pairs_live
-                or tp is None
-            ):
+            if side not in ("buy", "sell") or pair in pos_pairs_live or tp is None:
                 continue
             ccxt_sym = to_ccxt_symbol(pair)
             cancel_all_orders_for_pair(ex, ccxt_sym, pair)
@@ -356,9 +392,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
 def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
     """Cancel stale limit orders for pairs without positions and delete their JSON files."""
 
-    logger.info(
-        "Checking for stale limit orders older than %s seconds", max_age_sec
-    )
+    logger.info("Checking for stale limit orders older than %s seconds", max_age_sec)
     try:
         # Suppress CCXT warning when fetching all open orders without a symbol
         exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
@@ -406,9 +440,7 @@ def cancel_unpositioned_limits(exchange, max_age_sec: int = 600 * 3):
                 if fp.exists():
                     fp.unlink()
             except Exception as e:
-                logger.warning(
-                    "cancel_unpositioned_limits unlink error %s: %s", fp, e
-                )
+                logger.warning("cancel_unpositioned_limits unlink error %s: %s", fp, e)
         except Exception as e:
             logger.warning("cancel_unpositioned_limits processing error: %s", e)
             continue
@@ -501,9 +533,7 @@ def cancel_expired_limit_orders(exchange) -> None:
         try:
             fp.unlink()
         except Exception as e:
-            logger.warning(
-                "cancel_expired_limit_orders unlink error %s: %s", fp, e
-            )
+            logger.warning("cancel_expired_limit_orders unlink error %s: %s", fp, e)
 
 
 def remove_unmapped_limit_files(exchange) -> None:
@@ -517,9 +547,7 @@ def remove_unmapped_limit_files(exchange) -> None:
         orders = []
 
     open_pairs = {
-        _norm_pair_from_symbol(
-            o.get("symbol") or (o.get("info") or {}).get("symbol")
-        )
+        _norm_pair_from_symbol(o.get("symbol") or (o.get("info") or {}).get("symbol"))
         for o in orders or []
         if (o.get("type") or "").lower() == "limit"
     }
@@ -565,7 +593,6 @@ def add_sl_tp_from_json(exchange):
             fp.unlink()
         except Exception as e:
             logger.warning("add_sl_tp_from_json unlink error %s: %s", fp, e)
-
 
 
 def _get_position_info(pos):
@@ -645,8 +672,8 @@ def move_sl_to_entry(exchange):
 
 def live_loop(
     limit: int = 30,
-    cancel_interval: int = 600,   # cancel stale orders (10m)
-    add_interval: int = 60,       # SL/TP add (1m)
+    cancel_interval: int = 600,  # cancel stale orders (10m)
+    add_interval: int = 60,  # SL/TP add (1m)
     move_sl_interval: int = 600,  # move SL to entry (10m)
 ):
     """Run orchestrator and maintenance checks on a schedule.
@@ -679,9 +706,7 @@ def live_loop(
         except Exception:
             logger.exception("run_job error")
         finally:
-            logger.info(
-                "Scheduled run job finished in %.2fs", time.time() - start
-            )
+            logger.info("Scheduled run job finished in %.2fs", time.time() - start)
 
     # def cancel_job():
     #     logger.info("Scheduled stale order cancel check")
@@ -698,9 +723,7 @@ def live_loop(
         except Exception:
             logger.exception("limit_job error")
         finally:
-            logger.info(
-                "SL/TP placement check finished in %.2fs", time.time() - start
-            )
+            logger.info("SL/TP placement check finished in %.2fs", time.time() - start)
 
     def expiry_job():
         start = time.time()
@@ -710,9 +733,7 @@ def live_loop(
         except Exception:
             logger.exception("expiry_job error")
         finally:
-            logger.info(
-                "Limit expiry check finished in %.2fs", time.time() - start
-            )
+            logger.info("Limit expiry check finished in %.2fs", time.time() - start)
 
     def move_sl_job():
         logger.info("Scheduled move SL to entry check")
@@ -735,6 +756,7 @@ def live_loop(
     logger.info("Scheduler starting")
     scheduler.start()
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", action="store_true")
@@ -748,8 +770,5 @@ if __name__ == "__main__":
         logger.info(dumps_min(run(run_live=args.live, limit=args.limit)))
     else:
         logger.info(
-            dumps_min(
-                run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 30))
-            )
+            dumps_min(run(run_live=env_bool("LIVE", False), limit=env_int("LIMIT", 30)))
         )
-
