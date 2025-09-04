@@ -139,6 +139,15 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
         )
 
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
+
+    def fake_ind(df):
+        df = df.copy()
+        for col in ["ema20", "ema50", "rsi14"]:
+            df[col] = 0.0
+        return df
+
+    monkeypatch.setattr(payload_builder, "add_indicators", fake_ind)
+    monkeypatch.setattr(payload_builder, "trend_lbl", lambda *a, **k: 0)
     monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym, depth=10: {"sp": 0.1})
     monkeypatch.setattr(payload_builder, "funding_snapshot", lambda ex, sym: {"rate": 0.0})
     monkeypatch.setattr(payload_builder, "open_interest_snapshot", lambda ex, sym: {"amount": 0.0})
@@ -174,3 +183,42 @@ def test_time_payload_sessions():
     now = datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc)
     info = payload_builder.time_payload(now)
     assert info["session"] == "us"
+
+
+def test_purge_cache_by_ttl(monkeypatch):
+    import pandas as pd
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setattr(payload_builder, "CACHE_TTL", 1)
+    monkeypatch.setattr(payload_builder, "CACHE_MAX_SIZE", 10)
+
+    df = pd.DataFrame(
+        {"open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0], "volume": [1.0]},
+        index=pd.date_range("2024-01-01", periods=1, freq="1h", tz="UTC"),
+    )
+    old_ts = datetime.now(timezone.utc) - timedelta(seconds=2)
+    cache = {"BTC": (df, old_ts)}
+
+    payload_builder._purge_cache(cache)
+    assert cache == {}
+
+
+def test_purge_cache_by_size(monkeypatch):
+    import pandas as pd
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setattr(payload_builder, "CACHE_TTL", 1000)
+    monkeypatch.setattr(payload_builder, "CACHE_MAX_SIZE", 1)
+
+    df = pd.DataFrame(
+        {"open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0], "volume": [1.0]},
+        index=pd.date_range("2024-01-01", periods=1, freq="1h", tz="UTC"),
+    )
+    now = datetime.now(timezone.utc)
+    cache = {
+        "old": (df, now - timedelta(seconds=10)),
+        "new": (df, now),
+    }
+
+    payload_builder._purge_cache(cache)
+    assert list(cache.keys()) == ["new"]
