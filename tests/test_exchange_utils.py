@@ -1,4 +1,5 @@
 import exchange_utils
+import pytest
 
 
 def test_fetch_ohlcv_df(monkeypatch):
@@ -20,3 +21,9 @@ def test_orderbook_snapshot_calculates_values():
     assert snap["sp"] > 0
     assert snap["b"] > 0
     assert snap["a"] > 0
+
+
+def test_make_exchange_raises_when_oanda_missing(monkeypatch):
+    monkeypatch.setattr(exchange_utils.ccxt, "oanda", None, raising=False)
+    with pytest.raises(RuntimeError):
+        exchange_utils.make_exchange()

@@ -15,9 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 def make_exchange() -> ccxt.Exchange:
-    """Create an OANDA client using API keys from the environment."""
+    """Create an OANDA client using API keys from the environment.
+
+    Some minimal environments may ship a stripped-down build of
+    :mod:`ccxt` that lacks the ``oanda`` exchange class.  Instead of
+    throwing a bare ``AttributeError`` when this occurs, raise a more
+    descriptive ``RuntimeError`` so callers know how to resolve the
+    issue (typically by installing a full ``ccxt`` distribution).
+    """
+
     logger.info("Initializing OANDA exchange client")
-    exchange = ccxt.oanda({"enableRateLimit": True})
+    oanda_cls = getattr(ccxt, "oanda", None)
+    if oanda_cls is None:
+        raise RuntimeError("ccxt installation missing OANDA support; upgrade ccxt")
+
+    exchange = oanda_cls({"enableRateLimit": True})
     api_key = os.getenv("OANDA_API_KEY")
     account_id = os.getenv("OANDA_ACCOUNT_ID")
     if api_key:
