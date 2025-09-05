@@ -1,6 +1,6 @@
 """Simple RSI-based backtesting pipeline.
 
-This script downloads historical candles from Binance futures via CCXT,
+This script downloads historical candles from the OANDA forex exchange via CCXT,
 computes technical indicators and runs a toy RSI strategy to demonstrate how
 one might wire the existing helpers into a backtest.
 """

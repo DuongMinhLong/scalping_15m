@@ -11,7 +11,7 @@ class DummyExchange:
 
 
 def test_build_payload_from_env_pairs(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "AAA,BBB")
+    monkeypatch.setenv("FOREX_PAIRS", "XAUUSD,EURUSD")
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
@@ -20,27 +20,15 @@ def test_build_payload_from_env_pairs(monkeypatch):
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
-    assert pairs == {"AAAUSDT", "BBBUSDT"}
+    assert pairs == {"XAUUSD", "EURUSD"}
     assert "time" in payload and "eth" not in payload
 
 
-def test_build_payload_handles_numeric_prefix(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "1000PEPE")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
-    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
-    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
-    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
-    monkeypatch.setattr(pb, "news_snapshot", lambda: [])
-
-    payload = pb.build_payload(DummyExchange(), limit=1)
-    pairs = {c["p"] for c in payload["coins"]}
-    assert pairs == {"1000PEPEUSDT"}
-    assert "time" in payload and "eth" not in payload
 
 
 def test_build_payload_skips_positions(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "CCCUSDT,BBBUSDT,AAAUSDT")
-    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [{"pair": "BBBUSDT"}])
+    monkeypatch.setenv("FOREX_PAIRS", "GBPUSD,EURUSD,XAUUSD")
+    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [{"pair": "EURUSD"}])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
@@ -48,16 +36,16 @@ def test_build_payload_skips_positions(monkeypatch):
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
-    assert pairs == {"CCCUSDT", "AAAUSDT", "BBBUSDT"}
+    assert pairs == {"GBPUSD", "XAUUSD", "EURUSD"}
 
 
 def test_build_payload_preserves_sl(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "")
+    monkeypatch.setenv("FOREX_PAIRS", "")
 
     def fake_positions_snapshot(ex):
         return [
-            {"pair": "AAAUSDT", "side": "buy", "entry": 1.0, "sl": None},
-            {"pair": "BBBUSDT", "side": "sell", "entry": 2.0, "sl": 1.5},
+            {"pair": "XAUUSD", "side": "buy", "entry": 1.0, "sl": None},
+            {"pair": "EURUSD", "side": "sell", "entry": 2.0, "sl": 1.5},
         ]
 
     monkeypatch.setattr(pb, "positions_snapshot", fake_positions_snapshot)
@@ -73,7 +61,7 @@ def test_build_payload_preserves_sl(monkeypatch):
 
 
 def test_build_payload_includes_events(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "AAA")
+    monkeypatch.setenv("FOREX_PAIRS", "XAUUSD")
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
@@ -91,7 +79,7 @@ def test_build_payload_includes_events(monkeypatch):
 
 
 def test_build_payload_includes_news(monkeypatch):
-    monkeypatch.setenv("COIN_PAIRS", "AAA")
+    monkeypatch.setenv("FOREX_PAIRS", "XAUUSD")
     monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})

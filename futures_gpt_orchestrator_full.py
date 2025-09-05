@@ -3,7 +3,7 @@
 This script orchestrates the flow:
 1. Build payloads from market data
 2. Generate trading decisions with the MINI model
-3. Optionally place orders on Binance futures
+3. Optionally place orders on OANDA
 
 The original monolithic implementation has been refactored into smaller
 modules for clarity and maintainability.
@@ -154,7 +154,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
             raise
 
 
-# Default limit increased to 30 to expand the number of coins processed
+# Default limit increased to 30 to expand the number of pairs processed
 def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
     start_time = time.time()

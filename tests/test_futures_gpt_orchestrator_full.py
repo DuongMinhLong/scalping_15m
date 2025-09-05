@@ -15,7 +15,7 @@ import trading_utils  # noqa: E402
 
 class DummyExchange:
     def fetch_balance(self):
-        return {"total": {"USDT": 1000}}
+        return {"total": {"USD": 1000}}
 
 
 class CaptureExchange:
@@ -53,9 +53,9 @@ def test_run_sends_coins_only(monkeypatch):
     def fake_build_payload(ex, limit):
         build_called["called"] = True
         return {
-            "coins": [{"p": "ETHUSDT"}, {"p": "BTCUSDT"}],
+            "coins": [{"p": "XAUUSD"}, {"p": "EURUSD"}],
             "positions": [
-                {"pair": "ETHUSDT", "entry": 1, "sl": 0.9, "tp": 1.1, "pnl": 0.0}
+                {"pair": "XAUUSD", "entry": 1, "sl": 0.9, "tp": 1.1, "pnl": 0.0}
             ],
         }
 
@@ -87,7 +87,7 @@ def test_run_sends_coins_only(monkeypatch):
     payload_str = captured.get("user", "")
     payload_str = payload_str[payload_str.find("{") :]
     data = json.loads(payload_str)
-    assert any(c.get("p") == "ETHUSDT" for c in data.get("coins", []))
+    assert any(c.get("p") == "XAUUSD" for c in data.get("coins", []))
     assert data.get("positions")
     assert res == {
         "ts": "ts",
@@ -111,7 +111,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
             self.cancelled = []
 
         def fetch_balance(self):
-            return {"total": {"USDT": 1000}}
+            return {"total": {"USD": 1000}}
 
         def fetch_open_orders(self, symbol):
             return [{"id": "old1"}, {"id": "old2"}]
@@ -137,7 +137,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
         lambda text: {
             "coins": [
                 {
-                    "pair": "BTCUSDT",
+                    "pair": "EURUSD",
                     "side": "buy",
                     "entry": 1,
                     "sl": 0.9,
@@ -152,7 +152,7 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
     monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
     monkeypatch.setattr(orch, "cancel_unpositioned_stops", lambda e: None)
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
 
     class DummyDT:
         @staticmethod
@@ -163,9 +163,9 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
 
     orch.run(run_live=True, ex=ex)
 
-    assert ex.cancelled == [("old1", "BTC/USDT"), ("old2", "BTC/USDT")]
+    assert ex.cancelled == [("old1", "EUR/USD"), ("old2", "EUR/USD")]
     assert len(ex.orders) == 1
-    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert not (tmp_path / "EURUSD.json").exists()
 
 
 def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
@@ -174,7 +174,7 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
             self.orders = []
 
         def fetch_balance(self):
-            return {"total": {"USDT": 1000}}
+            return {"total": {"USD": 1000}}
 
         def fetch_open_orders(self, symbol):
             return []
@@ -200,7 +200,7 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(
         orch,
         "parse_mini_actions",
-        lambda text: {"coins": [{"pair": "BTCUSDT", "entry": 1, "sl": 0.9}]},
+        lambda text: {"coins": [{"pair": "EURUSD", "entry": 1, "sl": 0.9}]},
     )
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
@@ -229,11 +229,11 @@ def test_run_closes_positions(monkeypatch):
             self.orders = []
 
         def fetch_balance(self):
-            return {"total": {"USDT": 1000}}
+            return {"total": {"USD": 1000}}
 
         def fetch_positions(self):
             return [
-                {"symbol": "BTC/USDT", "contracts": 1, "entryPrice": 1},
+                {"symbol": "EUR/USD", "contracts": 1, "entryPrice": 1},
             ]
 
         def fetch_open_orders(self, symbol):
@@ -255,7 +255,7 @@ def test_run_closes_positions(monkeypatch):
     monkeypatch.setattr(orch, "send_openai", lambda *a, **k: {})
     monkeypatch.setattr(orch, "extract_content", lambda r: "")
     monkeypatch.setattr(
-        orch, "parse_mini_actions", lambda text: {"coins": [], "close": ["BTCUSDT"]}
+        orch, "parse_mini_actions", lambda text: {"coins": [], "close": ["EURUSD"]}
     )
     monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
     monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
@@ -273,7 +273,7 @@ def test_run_closes_positions(monkeypatch):
 
     assert ex.orders == [
         (
-            "BTC/USDT",
+            "EUR/USD",
             "market",
             "sell",
             1,
@@ -281,12 +281,12 @@ def test_run_closes_positions(monkeypatch):
             {"reduceOnly": True, "closePosition": True},
         )
     ]
-    assert res["closed"] == ["BTCUSDT"]
+    assert res["closed"] == ["EURUSD"]
 
 def test_run_respects_max_open_positions(monkeypatch):
     class Ex:
         def fetch_balance(self):
-            return {"total": {"USDT": 1000}}
+            return {"total": {"USD": 1000}}
 
     ex = Ex()
     monkeypatch.setattr(orch, "load_env", lambda: None)
@@ -329,11 +329,11 @@ def test_run_respects_max_open_positions(monkeypatch):
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
     ex = CaptureExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", side, 10, 1, 2)
+    orch._place_sl_tp(ex, "EUR/USD", side, 10, 1, 2)
     assert ex.cancelled == []
     assert ex.orders == [
         (
-            "BTC/USDT",
+            "EUR/USD",
             "STOP_MARKET",
             exit_side,
             None,
@@ -341,7 +341,7 @@ def test_place_sl_tp(side, exit_side):
             {"stopPrice": 1, "closePosition": True},
         ),
         (
-            "BTC/USDT",
+            "EUR/USD",
             "TAKE_PROFIT_MARKET",
             exit_side,
             None,
@@ -358,11 +358,11 @@ class ExistingStopExchange(CaptureExchange):
 
 def test_place_sl_tp_cancels_existing():
     ex = ExistingStopExchange()
-    orch._place_sl_tp(ex, "BTC/USDT", "buy", 10, 1, 2)
-    assert ex.cancelled == [("old1", "BTC/USDT")]
+    orch._place_sl_tp(ex, "EUR/USD", "buy", 10, 1, 2)
+    assert ex.cancelled == [("old1", "EUR/USD")]
     assert ex.orders == [
         (
-            "BTC/USDT",
+            "EUR/USD",
             "STOP_MARKET",
             "sell",
             None,
@@ -370,7 +370,7 @@ def test_place_sl_tp_cancels_existing():
             {"stopPrice": 1, "closePosition": True},
         ),
         (
-            "BTC/USDT",
+            "EUR/USD",
             "TAKE_PROFIT_MARKET",
             "sell",
             None,
@@ -385,7 +385,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
     limit_dir.mkdir()
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", limit_dir)
     data = {
-        "pair": "BTCUSDT",
+        "pair": "EURUSD",
         "order_id": "1",
         "side": "buy",
         "limit": 1,
@@ -393,13 +393,13 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
         "sl": 0.9,
         "tp": 1.1,
     }
-    (limit_dir / "BTCUSDT.json").write_text(json.dumps(data))
+    (limit_dir / "EURUSD.json").write_text(json.dumps(data))
     ex = FilledExchange()
     orch.add_sl_tp_from_json(ex)
-    assert not (limit_dir / "BTCUSDT.json").exists()
+    assert not (limit_dir / "EURUSD.json").exists()
     assert ex.orders == [
         (
-            "BTC/USDT",
+            "EUR/USD",
             "STOP_MARKET",
             "sell",
             None,
@@ -407,7 +407,7 @@ def test_add_sl_tp_from_json(tmp_path, monkeypatch):
             {"stopPrice": 0.9, "closePosition": True},
         ),
         (
-            "BTC/USDT",
+            "EUR/USD",
             "TAKE_PROFIT_MARKET",
             "sell",
             None,
@@ -423,7 +423,7 @@ class BreakEvenExchange(CaptureExchange):
         self.cancelled = []
 
     def fetch_positions(self):
-        return [{"symbol": "BTC/USDT", "contracts": 10, "entryPrice": 100}]
+        return [{"symbol": "EUR/USD", "contracts": 10, "entryPrice": 100}]
 
     def fetch_open_orders(self, symbol):
         return [
@@ -453,11 +453,11 @@ def test_move_sl_to_entry(monkeypatch):
     monkeypatch.setattr(orch, "qty_step", lambda e, s: 1)
     monkeypatch.setattr(orch, "round_step", lambda q, s: q)
     orch.move_sl_to_entry(ex)
-    assert ex.cancelled == [("sl1", "BTC/USDT"), ("tp1", "BTC/USDT")]
+    assert ex.cancelled == [("sl1", "EUR/USD"), ("tp1", "EUR/USD")]
     assert ex.orders == [
-        ("BTC/USDT", "MARKET", "sell", 2.0, None, {"reduceOnly": True}),
+        ("EUR/USD", "MARKET", "sell", 2.0, None, {"reduceOnly": True}),
         (
-            "BTC/USDT",
+            "EUR/USD",
             "STOP_MARKET",
             "sell",
             None,
@@ -465,7 +465,7 @@ def test_move_sl_to_entry(monkeypatch):
             {"stopPrice": 100, "closePosition": True},
         ),
         (
-            "BTC/USDT",
+            "EUR/USD",
             "TAKE_PROFIT_MARKET",
             "sell",
             None,
@@ -484,7 +484,7 @@ class StaleExchange:
         return [
             {
                 "id": "1",
-                "symbol": "BTC/USDT",
+                "symbol": "EUR/USD",
                 "type": "limit",
                 "timestamp": 1,
                 "reduceOnly": False,
@@ -497,22 +497,22 @@ class StaleExchange:
 
 def test_cancel_unpositioned_limits_clears_json(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
     ex = StaleExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
-    assert ex.cancelled == [("1", "BTC/USDT")]
-    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert ex.cancelled == [("1", "EUR/USD")]
+    assert not (tmp_path / "EURUSD.json").exists()
 
 
 def test_cancel_unpositioned_limits_skips_when_position(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
     ex = StaleExchange()
-    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"BTCUSDT"})
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"EURUSD"})
     orch.cancel_unpositioned_limits(ex, max_age_sec=0)
     assert ex.cancelled == []
-    assert (tmp_path / "BTCUSDT.json").exists()
+    assert (tmp_path / "EURUSD.json").exists()
 
 
 class SecTimestampExchange:
@@ -524,7 +524,7 @@ class SecTimestampExchange:
         return [
             {
                 "id": "1",
-                "symbol": "BTC/USDT",
+                "symbol": "EUR/USD",
                 "type": "limit",
                 "timestamp": time.time(),
                 "reduceOnly": False,
@@ -537,12 +537,12 @@ class SecTimestampExchange:
 
 def test_cancel_unpositioned_limits_handles_second_timestamp(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
     ex = SecTimestampExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.cancel_unpositioned_limits(ex, max_age_sec=60)
     assert ex.cancelled == []
-    assert (tmp_path / "BTCUSDT.json").exists()
+    assert (tmp_path / "EURUSD.json").exists()
 
 
 class StopExchange:
@@ -554,7 +554,7 @@ class StopExchange:
         return [
             {
                 "id": "1",
-                "symbol": "BTC/USDT",
+                "symbol": "EUR/USD",
                 "type": "STOP_MARKET",
                 "reduceOnly": True,
                 "stopPrice": 1,
@@ -569,7 +569,7 @@ def test_cancel_unpositioned_stops_cancels(monkeypatch):
     ex = StopExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.cancel_unpositioned_stops(ex)
-    assert ex.cancelled == [("1", "BTC/USDT")]
+    assert ex.cancelled == [("1", "EUR/USD")]
 
 
 class StopExchangeTrigger:
@@ -581,7 +581,7 @@ class StopExchangeTrigger:
         return [
             {
                 "id": "1",
-                "symbol": "BTC/USDT",
+                "symbol": "EUR/USD",
                 "type": "STOP_MARKET",
                 "reduceOnly": True,
                 "triggerPrice": 1,
@@ -596,12 +596,12 @@ def test_cancel_unpositioned_stops_cancels_trigger(monkeypatch):
     ex = StopExchangeTrigger()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.cancel_unpositioned_stops(ex)
-    assert ex.cancelled == [("1", "BTC/USDT")]
+    assert ex.cancelled == [("1", "EUR/USD")]
 
 
 def test_cancel_unpositioned_stops_skips_when_position(monkeypatch):
     ex = StopExchange()
-    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"BTCUSDT"})
+    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {"EURUSD"})
     orch.cancel_unpositioned_stops(ex)
     assert ex.cancelled == []
 
@@ -619,36 +619,36 @@ class OpenOrderExchange:
         self.options = {}
 
     def fetch_open_orders(self):
-        return [{"symbol": "BTC/USDT", "type": "limit"}]
+        return [{"symbol": "EUR/USD", "type": "limit"}]
 
 
 def test_remove_unmapped_limit_files_clears_json(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
     ex = NoOrderExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.remove_unmapped_limit_files(ex)
-    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert not (tmp_path / "EURUSD.json").exists()
 
 
 def test_remove_unmapped_limit_files_skips_when_order(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
-    (tmp_path / "BTCUSDT.json").write_text("{}")
+    (tmp_path / "EURUSD.json").write_text("{}")
     ex = OpenOrderExchange()
     monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: set())
     orch.remove_unmapped_limit_files(ex)
-    assert (tmp_path / "BTCUSDT.json").exists()
+    assert (tmp_path / "EURUSD.json").exists()
 
 
 def test_cancel_expired_limit_orders(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
     data = {
-        "pair": "BTCUSDT",
+        "pair": "EURUSD",
         "order_id": "1",
         "expiry": 1,
         "ts": time.time() - 2,
     }
-    (tmp_path / "BTCUSDT.json").write_text(json.dumps(data))
+    (tmp_path / "EURUSD.json").write_text(json.dumps(data))
 
     class Ex:
         def __init__(self):
@@ -662,5 +662,5 @@ def test_cancel_expired_limit_orders(tmp_path, monkeypatch):
 
     ex = Ex()
     orch.cancel_expired_limit_orders(ex)
-    assert ex.cancelled == [("1", "BTC/USDT")]
-    assert not (tmp_path / "BTCUSDT.json").exists()
+    assert ex.cancelled == [("1", "EUR/USD")]
+    assert not (tmp_path / "EURUSD.json").exists()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -114,21 +113,14 @@ def norm_pair_symbol(symbol: str) -> str:
 
 
 def pair_to_symbol(pair: str) -> str:
-    """Convert pair into CCXT symbol supporting crypto and forex."""
+    """Convert pair into CCXT symbol for forex trading."""
 
     if not pair:
         return ""
-    if pair.endswith("USDT"):
-        base = pair[:-4]
-        return f"{base}/USDT:USDT"
     if pair.endswith("USD"):
         base = pair[:-3]
         return f"{base}/USD"
     return pair
-
-
-def strip_numeric_prefix(base: str) -> str:
-    return re.sub(r"^\d+", "", base)
 
 
 def build_tf(df: pd.DataFrame, limit: int = 200, nd: int = 5) -> Dict:
@@ -182,22 +174,22 @@ def build_payload(
 ) -> Dict:
     """Build the payload used by the orchestrator with time info only.
 
-    Symbols are read from the ``COIN_PAIRS`` environment variable as a
-    comma-separated list of ``BASE`` or ``BASEUSDT`` pairs. Any pairs
-    already in ``exclude_pairs`` or with existing positions are skipped.
+    Symbols are read from the ``FOREX_PAIRS`` environment variable as a
+    comma-separated list of ``BASEUSD`` pairs. Any pairs already in
+    ``exclude_pairs`` or with existing positions are skipped.
     """
 
     exclude_pairs = exclude_pairs or set()
     positions = positions_snapshot(exchange)
     pos_pairs = {p.get("pair") for p in positions}
 
-    env_pairs = os.getenv("COIN_PAIRS", "")
+    env_pairs = os.getenv("FOREX_PAIRS", "")
     symbols: List[str] = [pair_to_symbol(p) for p in pos_pairs]
     for raw in env_pairs.split(","):
         raw = raw.strip().upper()
         if not raw:
             continue
-        pair = raw if raw.endswith("USDT") else f"{raw}USDT"
+        pair = raw
         if pair in exclude_pairs or pair in pos_pairs:
             continue
         symbols.append(pair_to_symbol(pair))

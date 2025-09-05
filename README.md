@@ -13,20 +13,24 @@ The stop-loss manager shifts the stop-loss to the entry price once the first tak
 
 ## Configuration
 
-Specify the trading pairs to analyse via the `COIN_PAIRS` variable in your `.env` file. Use a comma-separated list of pairs (e.g. `COIN_PAIRS=BTCUSDT,ETHUSDT`).
+Create a `.env` file with your credentials and desired pairs. At minimum
+the following variables are recognised:
+
+```env
+OANDA_API_KEY=your_oanda_api_key
+OANDA_ACCOUNT_ID=your_oanda_account_id
+TE_API_KEY=your_trading_economics_key
+OPENAI_API_KEY=your_openai_api_key
+
+# Comma separated list of forex pairs (e.g. XAUUSD,EURUSD)
+FOREX_PAIRS=XAUUSD
+```
 
 ### Economic events API
 
-Upcoming macroeconomic events are fetched from the
-[Trading Economics](https://tradingeconomics.com/api/) calendar API. Set
-the `TE_API_KEY` environment variable with your API token to enable
-event retrieval. If the variable is not set, the public `guest:guest`
-key is used (subject to rate limits):
-
-```env
-TE_API_KEY=your_api_key_here
-```
-
-If the key is missing or the request fails, the bot will continue
-operating but the `events` and `news` sections of the payload will be
-empty.
+Upcoming macroeconomic events and news are fetched from the
+[Trading Economics](https://tradingeconomics.com/api/) API. If
+`TE_API_KEY` is not set, the public `guest:guest` key is used (subject to
+rate limits). When the key is missing or the request fails, the bot
+continues operating but the `events` and `news` sections of the payload
+will be empty.
