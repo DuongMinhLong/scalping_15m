@@ -171,7 +171,7 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     try:
         bal = ex.fetch_balance()
         totals = bal.get("total") or {}
-        capital = float(totals.get("USD") or totals.get("USDT") or 0.0)
+        capital = float(totals.get("USD") or 0.0)
     except Exception as e:
         logger.warning("run fetch_balance error: %s", e)
         capital = 0.0

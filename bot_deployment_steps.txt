@@ -34,8 +34,8 @@ scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finall
 
 scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/function_helper.py" ubuntu@47.130.82.78:~/Finally_trading/function_helper
 
-scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/WIFUSDT.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
-scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/ZKUSDT.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/XAUUSD.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
+scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/logs/EURUSD.json" ubuntu@47.130.82.78:~/Finally_trading/active_orders
 
 
 scp -i /home/duongminhlong/Downloads/bot-trading.pem "/home/duongminhlong/Finally_trading/function_helper/function_helper.py" ubuntu@47.130.82.78:~/Finally_trading
@@ -95,8 +95,8 @@ screen -ls
 screen -r bot      # quay lại bot
 
 Downfile log 
-scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/WIFUSDT.json "/home/duongminhlong/Finally_trading/logs"
-scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/ZKUSDT.json "/home/duongminhlong/Finally_trading/logs"
+scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/XAUUSD.json "/home/duongminhlong/Finally_trading/logs"
+scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/active_orders/EURUSD.json "/home/duongminhlong/Finally_trading/logs"
 scp -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/Finally_trading/logs/*.log "/home/duongminhlong/Finally_trading/logs"
 
 scp  -i /home/duongminhlong/Downloads/bot-trading.pem  ubuntu@47.130.82.78:~/bot*.log "/home/duongminhlong/scaping_trading/"
