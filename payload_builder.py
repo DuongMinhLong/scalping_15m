@@ -18,7 +18,7 @@ from exchange_utils import fetch_ohlcv_df, orderbook_snapshot
 import requests
 from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
-from events import event_snapshot
+from events import event_snapshot, news_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,7 @@ def build_payload(
         "type": "forex",
         "time": time_payload(),
         "events": event_snapshot(),
+        "news": news_snapshot(),
         "dxy": dxy_snapshot(),
         "coins": [drop_empty(c) for c in coins],
         "positions": positions,

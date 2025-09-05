@@ -16,6 +16,7 @@ def test_build_payload_from_env_pairs(monkeypatch):
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
+    monkeypatch.setattr(pb, "news_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
@@ -29,6 +30,7 @@ def test_build_payload_handles_numeric_prefix(monkeypatch):
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
+    monkeypatch.setattr(pb, "news_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=1)
     pairs = {c["p"] for c in payload["coins"]}
@@ -42,6 +44,7 @@ def test_build_payload_skips_positions(monkeypatch):
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
+    monkeypatch.setattr(pb, "news_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=2)
     pairs = {c["p"] for c in payload["coins"]}
@@ -61,6 +64,7 @@ def test_build_payload_preserves_sl(monkeypatch):
     monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
     monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
     monkeypatch.setattr(pb, "event_snapshot", lambda: [])
+    monkeypatch.setattr(pb, "news_snapshot", lambda: [])
 
     payload = pb.build_payload(DummyExchange(), limit=0)
     positions = payload["positions"]
@@ -78,6 +82,22 @@ def test_build_payload_includes_events(monkeypatch):
         {"time": "2024-01-01T00:00:00Z", "title": "CPI", "impact": "high"}
     ]
     monkeypatch.setattr(pb, "event_snapshot", lambda: sample_events)
+    sample_news = [{"time": "2024-01-01T00:00:00Z", "title": "Fed", "url": "http://ex"}]
+    monkeypatch.setattr(pb, "news_snapshot", lambda: sample_news)
 
     payload = pb.build_payload(DummyExchange(), limit=1)
     assert payload["events"] == sample_events
+    assert payload["news"] == sample_news
+
+
+def test_build_payload_includes_news(monkeypatch):
+    monkeypatch.setenv("COIN_PAIRS", "AAA")
+    monkeypatch.setattr(pb, "positions_snapshot", lambda ex: [])
+    monkeypatch.setattr(pb, "coin_payload", lambda ex, sym: {"p": pb.norm_pair_symbol(sym)})
+    monkeypatch.setattr(pb, "_tf_with_cache", lambda *a, **k: {"ema": 0})
+    monkeypatch.setattr(pb, "event_snapshot", lambda: [])
+    sample_news = [{"time": "2024-01-01", "title": "CPI", "url": "http://x"}]
+    monkeypatch.setattr(pb, "news_snapshot", lambda: sample_news)
+
+    payload = pb.build_payload(DummyExchange(), limit=1)
+    assert payload["news"] == sample_news
