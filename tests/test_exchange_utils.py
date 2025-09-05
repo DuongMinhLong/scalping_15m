@@ -23,7 +23,7 @@ def test_orderbook_snapshot_calculates_values():
     assert snap["a"] > 0
 
 
-def test_make_exchange_raises_when_oanda_missing(monkeypatch):
+def test_make_exchange_falls_back_without_ccxt(monkeypatch):
     monkeypatch.setattr(exchange_utils.ccxt, "oanda", None, raising=False)
-    with pytest.raises(RuntimeError):
-        exchange_utils.make_exchange()
+    ex = exchange_utils.make_exchange()
+    assert isinstance(ex, exchange_utils.OandaREST)
