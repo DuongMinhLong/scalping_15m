@@ -14,14 +14,8 @@ from typing import Dict, List, Set
 import pandas as pd
 
 from env_utils import compact, drop_empty, human_num, rfloat, rprice
-from exchange_utils import (
-    fetch_ohlcv_df,
-    orderbook_snapshot,
-    funding_snapshot,
-    open_interest_snapshot,
-    cvd_snapshot,
-    liquidation_snapshot,
-)
+from exchange_utils import fetch_ohlcv_df, orderbook_snapshot
+import requests
 from indicators import add_indicators, trend_lbl
 from positions import positions_snapshot
 from events import event_snapshot
@@ -80,6 +74,37 @@ def time_payload(now: datetime | None = None) -> Dict:
     }
 
 
+def dxy_snapshot() -> float | None:
+    """Return the current US Dollar Index (DXY) value."""
+
+    try:
+        resp = requests.get(
+            "https://api.exchangerate.host/latest",
+            params={"base": "USD", "symbols": "EUR,JPY,GBP,CAD,SEK,CHF"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        rates = resp.json().get("rates") or {}
+        eurusd = 1 / float(rates.get("EUR"))
+        usdjpy = float(rates.get("JPY"))
+        gbpusd = 1 / float(rates.get("GBP"))
+        usdcad = float(rates.get("CAD"))
+        usdsek = float(rates.get("SEK"))
+        usdchf = float(rates.get("CHF"))
+        dxy = 50.14348112 * (
+            (eurusd ** -0.576)
+            * (usdjpy ** 0.136)
+            * (gbpusd ** -0.119)
+            * (usdcad ** 0.091)
+            * (usdsek ** 0.042)
+            * (usdchf ** 0.036)
+        )
+        return rfloat(dxy, 4)
+    except Exception as e:  # pragma: no cover - network failures
+        logger.warning("dxy_snapshot error: %s", e)
+        return None
+
+
 def norm_pair_symbol(symbol: str) -> str:
     """Normalise CCXT-style symbols to ``BASEQUOTE`` format."""
 
@@ -89,13 +114,16 @@ def norm_pair_symbol(symbol: str) -> str:
 
 
 def pair_to_symbol(pair: str) -> str:
-    """Convert ``BASEQUOTE`` pair into CCXT ``BASE/QUOTE:QUOTE`` symbol."""
+    """Convert pair into CCXT symbol supporting crypto and forex."""
 
     if not pair:
         return ""
     if pair.endswith("USDT"):
         base = pair[:-4]
         return f"{base}/USDT:USDT"
+    if pair.endswith("USD"):
+        base = pair[:-3]
+        return f"{base}/USD"
     return pair
 
 
@@ -138,13 +166,10 @@ def coin_payload(exchange, symbol: str) -> Dict:
 
     payload = {
         "pair": norm_pair_symbol(symbol),
+        "market": "forex",
         "h1": _tf_with_cache(exchange, symbol, "1h", CACHE_H1, LOCK_H1),
         "h4": _tf_with_cache(exchange, symbol, "4h", CACHE_H4, LOCK_H4),
         "d1": _tf_with_cache(exchange, symbol, "1d", CACHE_D1, LOCK_D1),
-        "funding": funding_snapshot(exchange, symbol),
-        "oi": open_interest_snapshot(exchange, symbol),
-        "cvd": cvd_snapshot(exchange, symbol),
-        "liquidation": liquidation_snapshot(exchange, symbol),
         "orderbook": orderbook_snapshot(exchange, symbol, depth=10),
     }
     return drop_empty(payload)
@@ -190,8 +215,10 @@ def build_payload(
             except Exception as e:
                 logger.warning("coin_payload failed for %s: %s", sym, e)
     payload = {
+        "type": "forex",
         "time": time_payload(),
         "events": event_snapshot(),
+        "dxy": dxy_snapshot(),
         "coins": [drop_empty(c) for c in coins],
         "positions": positions,
     }

@@ -139,22 +139,17 @@ def test_coin_payload_includes_higher_timeframes(monkeypatch):
         )
 
     monkeypatch.setattr(payload_builder, "fetch_ohlcv_df", fake_fetch)
-    monkeypatch.setattr(payload_builder, "orderbook_snapshot", lambda ex, sym, depth=10: {"sp": 0.1})
-    monkeypatch.setattr(payload_builder, "funding_snapshot", lambda ex, sym: {"rate": 0.0})
-    monkeypatch.setattr(payload_builder, "open_interest_snapshot", lambda ex, sym: {"amount": 0.0})
-    monkeypatch.setattr(payload_builder, "cvd_snapshot", lambda ex, sym: {"cvd": 0.0})
-    monkeypatch.setattr(payload_builder, "liquidation_snapshot", lambda ex, sym: {"long_liq": 0.0})
+    monkeypatch.setattr(
+        payload_builder, "orderbook_snapshot", lambda ex, sym, depth=10: {"sp": 0.1}
+    )
 
-    res = payload_builder.coin_payload(None, "BTC/USDT:USDT")
+    res = payload_builder.coin_payload(None, "XAU/USD")
     assert {
         "pair",
+        "market",
         "h1",
         "h4",
         "d1",
-        "funding",
-        "oi",
-        "cvd",
-        "liquidation",
         "orderbook",
     } <= set(res.keys())
     assert res["orderbook"]["sp"] == 0.1

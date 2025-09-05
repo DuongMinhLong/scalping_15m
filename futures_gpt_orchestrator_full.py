@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -169,13 +170,39 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
 
     try:
         bal = ex.fetch_balance()
-        capital = float((bal.get("total") or {}).get("USDT", 0.0))
+        totals = bal.get("total") or {}
+        capital = float(totals.get("USD") or totals.get("USDT") or 0.0)
     except Exception as e:
         logger.warning("run fetch_balance error: %s", e)
         capital = 0.0
-    logger.info("Capital available: %.2f USDT", capital)
+    logger.info("Capital available: %.2f USD", capital)
 
     stamp = ts_prefix()
+
+    now = datetime.now(timezone.utc)
+    if now.hour < 6 or now.hour >= 16:
+        logger.info("Outside trading session (UTC hour %s), exiting run", now.hour)
+        save_text(
+            f"{stamp}_orders.json",
+            dumps_min(
+                {
+                    "live": run_live,
+                    "capital": capital,
+                    "coins": [],
+                    "placed": [],
+                    "closed": [],
+                    "reason": "session",
+                }
+            ),
+        )
+        return {
+            "ts": stamp,
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "placed": [],
+            "closed": [],
+        }
 
     if run_live:
         max_pos = env_int("MAX_OPEN_POSITIONS", 10)

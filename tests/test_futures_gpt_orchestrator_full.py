@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -72,6 +73,13 @@ def test_run_sends_coins_only(monkeypatch):
     )
     monkeypatch.setattr(orch, "parse_mini_actions", lambda text: {"coins": []})
     monkeypatch.setattr(orch, "enrich_tp_qty", lambda ex, coins, capital: coins)
+
+    class DummyDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(orch, "datetime", DummyDT)
 
     res = orch.run(run_live=False, ex=DummyExchange())
 
@@ -146,6 +154,13 @@ def test_run_cancels_existing_orders(monkeypatch, tmp_path):
     monkeypatch.setattr(orch, "LIMIT_ORDER_DIR", tmp_path)
     (tmp_path / "BTCUSDT.json").write_text("{}")
 
+    class DummyDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(orch, "datetime", DummyDT)
+
     orch.run(run_live=True, ex=ex)
 
     assert ex.cancelled == [("old1", "BTC/USDT"), ("old2", "BTC/USDT")]
@@ -196,6 +211,13 @@ def test_run_skips_when_tp_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(trading_utils, "calc_qty", lambda *a, **k: 1)
     monkeypatch.setattr(trading_utils, "infer_side", lambda entry, sl, tp: "buy")
 
+    class DummyDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(orch, "datetime", DummyDT)
+
     orch.run(run_live=True, ex=ex)
 
     assert len(ex.orders) == 0
@@ -240,6 +262,13 @@ def test_run_closes_positions(monkeypatch):
     monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
     monkeypatch.setattr(orch, "cancel_unpositioned_stops", lambda e: None)
 
+    class DummyDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(orch, "datetime", DummyDT)
+
     res = orch.run(run_live=True, ex=ex)
 
     assert ex.orders == [
@@ -276,6 +305,13 @@ def test_run_respects_max_open_positions(monkeypatch):
         return {}
 
     monkeypatch.setattr(orch, "build_payload", fake_build_payload)
+
+    class DummyDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(orch, "datetime", DummyDT)
 
     res = orch.run(run_live=True, ex=ex)
 

@@ -2,6 +2,11 @@
 
 Automated trading bot orchestrator for 1h timeframe with 4h/1d context, including scheduled checks and order management.
 
+The bot now targets the **forex** market using the OANDA API and is
+optimised for trading **XAU/USD**.  The payload includes the US Dollar
+Index (DXY) and a session filter only allows trades between the London and
+New York sessions (06:00–16:00 UTC).
+
 This build automatically removes JSON metadata for cancelled or unmapped limit orders without open positions before calling the GPT API.
 
 The stop-loss manager shifts the stop-loss to the entry price once the first take-profit is hit.
