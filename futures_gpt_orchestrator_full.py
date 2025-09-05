@@ -204,39 +204,6 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
             "closed": [],
         }
 
-    if run_live:
-        max_pos = env_int("MAX_OPEN_POSITIONS", 10)
-        try:
-            current_pos = len(get_open_position_pairs(ex))
-        except Exception as e:
-            logger.warning("run get_open_position_pairs error: %s", e)
-            current_pos = 0
-        if current_pos >= max_pos:
-            logger.info(
-                "Open positions %s >= max %s, exiting run", current_pos, max_pos
-            )
-            save_text(
-                f"{stamp}_orders.json",
-                dumps_min(
-                    {
-                        "live": run_live,
-                        "capital": capital,
-                        "coins": [],
-                        "placed": [],
-                        "closed": [],
-                        "reason": "max_positions",
-                    }
-                ),
-            )
-            return {
-                "ts": stamp,
-                "live": run_live,
-                "capital": capital,
-                "coins": [],
-                "placed": [],
-                "closed": [],
-            }
-
     payload_full = build_payload(ex, limit)
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))
     logger.info("Payload built with %d coins", len(payload_full.get("coins", [])))

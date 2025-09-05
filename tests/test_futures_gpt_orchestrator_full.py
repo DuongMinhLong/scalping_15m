@@ -283,48 +283,6 @@ def test_run_closes_positions(monkeypatch):
     ]
     assert res["closed"] == ["EURUSD"]
 
-def test_run_respects_max_open_positions(monkeypatch):
-    class Ex:
-        def fetch_balance(self):
-            return {"total": {"USD": 1000}}
-
-    ex = Ex()
-    monkeypatch.setattr(orch, "load_env", lambda: None)
-    monkeypatch.setattr(orch, "get_models", lambda: (None, "MODEL"))
-    monkeypatch.setattr(orch, "ts_prefix", lambda: "ts")
-    monkeypatch.setattr(orch, "save_text", lambda *a, **k: None)
-    monkeypatch.setattr(orch, "cancel_unpositioned_limits", lambda e: None)
-    monkeypatch.setattr(orch, "remove_unmapped_limit_files", lambda e: None)
-    monkeypatch.setattr(orch, "cancel_unpositioned_stops", lambda e: None)
-    monkeypatch.setattr(orch, "env_int", lambda k, d: 10)
-    monkeypatch.setattr(orch, "get_open_position_pairs", lambda e: {f"p{i}" for i in range(11)})
-    build_called = {}
-
-    def fake_build_payload(*a, **k):
-        build_called["called"] = True
-        return {}
-
-    monkeypatch.setattr(orch, "build_payload", fake_build_payload)
-
-    class DummyDT:
-        @staticmethod
-        def now(tz=None):
-            return datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-
-    monkeypatch.setattr(orch, "datetime", DummyDT)
-
-    res = orch.run(run_live=True, ex=ex)
-
-    assert not build_called.get("called")
-    assert res == {
-        "ts": "ts",
-        "live": True,
-        "capital": 1000.0,
-        "coins": [],
-        "placed": [],
-        "closed": [],
-    }
-
 
 @pytest.mark.parametrize("side,exit_side", [("buy", "sell"), ("sell", "buy")])
 def test_place_sl_tp(side, exit_side):
