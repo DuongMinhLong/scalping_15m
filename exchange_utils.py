@@ -194,13 +194,17 @@ def make_exchange() -> Any:
     logger.info("Initializing OANDA exchange client")
     api_key = os.getenv("OANDA_API_KEY")
     account_id = os.getenv("OANDA_ACCOUNT_ID")
+    if not api_key or "your_oanda_api_key" in api_key.lower():
+        raise RuntimeError("OANDA_API_KEY is required; set it in your environment or .env file")
+    if not account_id or "your_oanda_account_id" in account_id.lower():
+        raise RuntimeError(
+            "OANDA_ACCOUNT_ID is required; set it in your environment or .env file"
+        )
     oanda_cls = getattr(ccxt, "oanda", None)
     if oanda_cls is not None:
         exchange = oanda_cls({"enableRateLimit": True})
-        if api_key:
-            exchange.apiKey = api_key
-        if account_id:
-            exchange.uid = account_id
+        exchange.apiKey = api_key
+        exchange.uid = account_id
         return exchange
 
     logger.warning("ccxt installation missing OANDA; using REST fallback")

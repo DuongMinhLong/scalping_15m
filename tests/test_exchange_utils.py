@@ -24,6 +24,15 @@ def test_orderbook_snapshot_calculates_values():
 
 
 def test_make_exchange_falls_back_without_ccxt(monkeypatch):
+    monkeypatch.setenv("OANDA_API_KEY", "k")
+    monkeypatch.setenv("OANDA_ACCOUNT_ID", "a")
     monkeypatch.setattr(exchange_utils.ccxt, "oanda", None, raising=False)
     ex = exchange_utils.make_exchange()
     assert isinstance(ex, exchange_utils.OandaREST)
+
+
+def test_make_exchange_requires_credentials(monkeypatch):
+    monkeypatch.delenv("OANDA_API_KEY", raising=False)
+    monkeypatch.delenv("OANDA_ACCOUNT_ID", raising=False)
+    with pytest.raises(RuntimeError):
+        exchange_utils.make_exchange()

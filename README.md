@@ -13,8 +13,9 @@ The stop-loss manager shifts the stop-loss to the entry price once the first tak
 
 ## Configuration
 
-Create a `.env` file with your credentials and desired pairs. At minimum
-the following variables are recognised:
+Create a `.env` file with your credentials and desired pairs. **Both**
+`OANDA_API_KEY` and `OANDA_ACCOUNT_ID` must be set or the application will
+refuse to start. The following variables are recognised:
 
 ```env
 OANDA_API_KEY=your_oanda_api_key
