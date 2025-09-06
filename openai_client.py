@@ -34,6 +34,7 @@ def send_openai(system_text: str, user_text: str, model: str) -> Dict[str, Any]:
             {"role": "user", "content": user_text},
         ],
         "response_format": {"type": "text"},
+        "reasoning_effort": "high"
     }
     for attempt in range(3):  # thử tối đa 3 lần
         try:

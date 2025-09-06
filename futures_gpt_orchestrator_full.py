@@ -743,7 +743,7 @@ def live_loop(
 
     def limit_job():
         start = time.time()
-        logger.info("Scheduled SL/TP placement check")
+        # logger.info("Scheduled SL/TP placement check")
         try:
             add_sl_tp_from_json(ex)
         except Exception:
@@ -753,7 +753,7 @@ def live_loop(
 
     def expiry_job():
         start = time.time()
-        logger.info("Scheduled limit expiry check")
+        # logger.info("Scheduled limit expiry check")
         try:
             cancel_expired_limit_orders(ex)
         except Exception:
@@ -762,7 +762,7 @@ def live_loop(
             logger.info("Limit expiry check finished in %.2fs", time.time() - start)
 
     def move_sl_job():
-        logger.info("Scheduled move SL to entry check")
+        # logger.info("Scheduled move SL to entry check")
         try:
             move_sl_to_entry(ex)
         except Exception:
@@ -775,9 +775,9 @@ def live_loop(
 
     # Các job còn lại chạy theo interval
     # scheduler.add_job(cancel_job, "interval", seconds=cancel_interval)
-    scheduler.add_job(limit_job, "interval", seconds=add_interval)
+    scheduler.add_job(limit_job, "interval", seconds=30)
     scheduler.add_job(expiry_job, "interval", seconds=60)
-    # scheduler.add_job(move_sl_job, "interval", seconds=move_sl_interval)
+    scheduler.add_job(move_sl_job, "interval", seconds=60)
 
     logger.info("Scheduler starting")
     scheduler.start()
