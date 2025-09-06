@@ -36,3 +36,18 @@ def test_make_exchange_requires_credentials(monkeypatch):
     monkeypatch.delenv("OANDA_ACCOUNT_ID", raising=False)
     with pytest.raises(RuntimeError):
         exchange_utils.make_exchange()
+
+
+def test_make_exchange_uses_api_url_with_ccxt(monkeypatch):
+    class Dummy:
+        def __init__(self, config):
+            self.urls = {"api": "default"}
+            self.apiKey = None
+            self.uid = None
+
+    monkeypatch.setenv("OANDA_API_KEY", "k")
+    monkeypatch.setenv("OANDA_ACCOUNT_ID", "a")
+    monkeypatch.setenv("OANDA_API_URL", "https://example.com/v3")
+    monkeypatch.setattr(exchange_utils.ccxt, "oanda", Dummy, raising=False)
+    ex = exchange_utils.make_exchange()
+    assert ex.urls["api"] == "https://example.com/v3"

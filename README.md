@@ -20,12 +20,22 @@ refuse to start. The following variables are recognised:
 ```env
 OANDA_API_KEY=your_oanda_api_key
 OANDA_ACCOUNT_ID=your_oanda_account_id
+OANDA_API_URL=https://api-fxpractice.oanda.com/v3
 TE_API_KEY=your_trading_economics_key
 OPENAI_API_KEY=your_openai_api_key
 
 # Comma separated list of forex pairs (e.g. XAUUSD,EURUSD)
 FOREX_PAIRS=XAUUSD
 ```
+
+### OANDA practice accounts
+
+OANDA provides free **practice** accounts for testing and backtesting. A
+practice API key and account ID are distinct from live credentials and use
+the base URL `https://api-fxpractice.oanda.com`. You can choose a virtual
+balance of 10k, 50k or 100k USD; prices mirror the real market but orders do
+not risk real funds. To trade live, replace `OANDA_API_URL` with
+`https://api-fxtrade.oanda.com/v3` and supply your live credentials.
 
 ### Economic events API
 
