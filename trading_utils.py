@@ -80,13 +80,16 @@ def parse_mini_actions(text: str) -> Dict[str, Any]:
 
 
 KNOWN_QUOTES: Iterable[str] = (
-    "USDT",
-    "BUSD",
-    "USDC",
     "USD",
-    "BTC",
-    "ETH",
-    "BNB",
+    "EUR",
+    "JPY",
+    "GBP",
+    "AUD",
+    "CAD",
+    "CHF",
+    "NZD",
+    "XAU",
+    "XAG",
 )
 
 

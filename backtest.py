@@ -1,6 +1,6 @@
 """Simple RSI-based backtesting pipeline.
 
-This script downloads historical candles from Binance futures via CCXT,
+This script downloads historical candles from the FXCM forex exchange via CCXT,
 computes technical indicators and runs a toy RSI strategy to demonstrate how
 one might wire the existing helpers into a backtest.
 """
@@ -64,7 +64,9 @@ def run_backtest(symbol: str, timeframe: str, limit: int, since: int | None) -> 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a simple backtest")
-    parser.add_argument("--symbol", default="BTC/USDT", help="CCXT symbol, e.g. BTC/USDT")
+    parser.add_argument(
+        "--symbol", default="XAU/USD", help="CCXT symbol, e.g. XAU/USD"
+    )
     parser.add_argument("--timeframe", default="1h", help="Candle timeframe")
     parser.add_argument("--limit", type=int, default=500, help="Number of candles to fetch")
     parser.add_argument(

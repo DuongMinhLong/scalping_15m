@@ -3,7 +3,7 @@
 This script orchestrates the flow:
 1. Build payloads from market data
 2. Generate trading decisions with the MINI model
-3. Optionally place orders on Binance futures
+3. Optionally place orders on FXCM
 
 The original monolithic implementation has been refactored into smaller
 modules for clarity and maintainability.
@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -153,7 +154,7 @@ def _place_sl_tp(exchange, symbol, side, qty, sl, tp):
             raise
 
 
-# Default limit increased to 30 to expand the number of coins processed
+# Default limit increased to 30 to expand the number of pairs processed
 def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
     """Execute the full payload → decision → order pipeline."""
     start_time = time.time()
@@ -169,46 +170,39 @@ def run(run_live: bool = False, limit: int = 30, ex=None) -> Dict[str, Any]:
 
     try:
         bal = ex.fetch_balance()
-        capital = float((bal.get("total") or {}).get("USDT", 0.0))
+        totals = bal.get("total") or {}
+        capital = float(totals.get("USD") or 0.0)
     except Exception as e:
         logger.warning("run fetch_balance error: %s", e)
         capital = 0.0
-    logger.info("Capital available: %.2f USDT", capital)
+    logger.info("Capital available: %.2f USD", capital)
 
     stamp = ts_prefix()
 
-    if run_live:
-        max_pos = env_int("MAX_OPEN_POSITIONS", 10)
-        try:
-            current_pos = len(get_open_position_pairs(ex))
-        except Exception as e:
-            logger.warning("run get_open_position_pairs error: %s", e)
-            current_pos = 0
-        if current_pos >= max_pos:
-            logger.info(
-                "Open positions %s >= max %s, exiting run", current_pos, max_pos
-            )
-            save_text(
-                f"{stamp}_orders.json",
-                dumps_min(
-                    {
-                        "live": run_live,
-                        "capital": capital,
-                        "coins": [],
-                        "placed": [],
-                        "closed": [],
-                        "reason": "max_positions",
-                    }
-                ),
-            )
-            return {
-                "ts": stamp,
-                "live": run_live,
-                "capital": capital,
-                "coins": [],
-                "placed": [],
-                "closed": [],
-            }
+    now = datetime.now(timezone.utc)
+    if now.hour < 6 or now.hour >= 16:
+        logger.info("Outside trading session (UTC hour %s), exiting run", now.hour)
+        save_text(
+            f"{stamp}_orders.json",
+            dumps_min(
+                {
+                    "live": run_live,
+                    "capital": capital,
+                    "coins": [],
+                    "placed": [],
+                    "closed": [],
+                    "reason": "session",
+                }
+            ),
+        )
+        return {
+            "ts": stamp,
+            "live": run_live,
+            "capital": capital,
+            "coins": [],
+            "placed": [],
+            "closed": [],
+        }
 
     payload_full = build_payload(ex, limit)
     save_text(f"{stamp}_payload_full.json", dumps_min(payload_full))

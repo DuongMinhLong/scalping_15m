@@ -5,7 +5,7 @@ class DummyExchange:
     def fetch_positions(self):
         return [
             {
-                "symbol": "BTC/USDT:USDT",
+                "symbol": "XAU/USD:USD",
                 "contracts": 1,
                 "entryPrice": 100,
                 "unrealizedPnl": 5,
@@ -24,7 +24,7 @@ def test_positions_snapshot_includes_close_position_orders():
     res = positions_snapshot(ex)
     assert len(res) == 1
     pos = res[0]
-    assert pos["pair"] == "BTCUSDT"
+    assert pos["pair"] == "XAUUSD"
     assert pos["qty"] == 1.0
     assert pos["sl"] == 90.0
     assert pos["tp"] == 110.0
@@ -34,7 +34,7 @@ class DummyExchangeNoStops:
     def fetch_positions(self):
         return [
             {
-                "symbol": "BTC/USDT:USDT",
+                "symbol": "XAU/USD:USD",
                 "contracts": 1,
                 "entryPrice": 100,
                 "unrealizedPnl": 5,
@@ -58,7 +58,7 @@ class DummyExchangeTrigger:
     def fetch_positions(self):
         return [
             {
-                "symbol": "BTC/USDT:USDT",
+                "symbol": "XAU/USD:USD",
                 "contracts": 1,
                 "entryPrice": 100,
                 "unrealizedPnl": 5,
@@ -85,7 +85,7 @@ class DummyExchangeTopTrigger:
     def fetch_positions(self):
         return [
             {
-                "symbol": "BTC/USDT:USDT",
+                "symbol": "XAU/USD:USD",
                 "contracts": 1,
                 "entryPrice": 100,
                 "unrealizedPnl": 5,
@@ -112,7 +112,7 @@ class DummyExchangeAltFields:
     def fetch_positions(self):
         return [
             {
-                "symbol": "ETH/USDT:USDT",
+                "symbol": "EUR/USD:USD",
                 "size": 2,
                 "avgPrice": "2000",
                 "unrealizedPnl": 10,
@@ -128,7 +128,7 @@ def test_positions_snapshot_handles_size_and_avgprice():
     res = positions_snapshot(ex)
     assert len(res) == 1
     pos = res[0]
-    assert pos["pair"] == "ETHUSDT"
+    assert pos["pair"] == "EURUSD"
     assert pos["qty"] == 2.0
     assert pos["entry"] == 2000.0
 
@@ -136,7 +136,7 @@ def test_positions_snapshot_handles_size_and_avgprice():
 class DummyExchangePairsAlt:
     def fetch_positions(self):
         return [
-            {"symbol": "ETH/USDT:USDT", "size": 1}
+            {"symbol": "EUR/USD:USD", "size": 1}
         ]
 
 
@@ -145,4 +145,4 @@ def test_get_open_position_pairs_supports_size():
 
     ex = DummyExchangePairsAlt()
     res = get_open_position_pairs(ex)
-    assert res == {"ETHUSDT"}
+    assert res == {"EURUSD"}
