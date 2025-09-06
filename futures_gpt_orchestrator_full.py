@@ -643,8 +643,23 @@ def move_sl_to_entry(exchange):
             logger.warning("move_sl_to_entry fetch_ticker error for %s: %s", pair, e)
             continue
         hit = (side == "buy" and price > tp1) or (side == "sell" and price < tp1)
+        logger.debug(
+            "move_sl_to_entry check %s: price=%.4f tp1=%.4f hit=%s",
+            pair,
+            price,
+            tp1,
+            hit,
+        )
         if not hit:
             continue
+        logger.info(
+            "move_sl_to_entry triggered for %s: entry=%.4f price=%.4f risk=%.4f qty=%.4f",
+            pair,
+            entry,
+            price,
+            risk,
+            qty_total,
+        )
         exit_side = "sell" if side == "buy" else "buy"
         qty_close = qty_total * 0.2
         try:
@@ -661,11 +676,22 @@ def move_sl_to_entry(exchange):
                 None,
                 {"reduceOnly": True},
             )
+            logger.info(
+                "move_sl_to_entry closed %.4f of %s via market order",
+                qty_close,
+                pair,
+            )
         except Exception as e:
             logger.warning("move_sl_to_entry close_partial error for %s: %s", pair, e)
             continue
         try:
             _place_sl_tp(exchange, symbol, side, qty_total, entry, tp)
+            logger.info(
+                "move_sl_to_entry set SL to entry %.4f and kept TP %.4f for %s",
+                entry,
+                tp,
+                pair,
+            )
         except Exception as e:
             logger.warning("move_sl_to_entry place_sl_tp error for %s: %s", pair, e)
 
