@@ -1,4 +1,4 @@
-"""Helpers for interacting with the OANDA forex exchange."""
+"""Helpers for interacting with the FXCM forex exchange."""
 
 from __future__ import annotations
 
@@ -16,15 +16,15 @@ from env_utils import rfloat
 logger = logging.getLogger(__name__)
 
 
-class OandaREST:
-    """Lightweight OANDA client used when ccxt lacks native support."""
+class FxcmREST:
+    """Lightweight FXCM client used when ccxt lacks native support."""
 
     def __init__(self, api_key: str | None = None, account_id: str | None = None):
         self.apiKey = api_key
         self.uid = account_id
         self.session = requests.Session()
         self.base_url = os.getenv(
-            "OANDA_API_URL", "https://api-fxpractice.oanda.com/v3"
+            "FXCM_API_URL", "https://api-demo.fxcm.com"
         )
         self.session.headers.update({"Content-Type": "application/json"})
         if api_key:
@@ -184,34 +184,34 @@ class OandaREST:
 
 
 def make_exchange() -> Any:
-    """Create an OANDA client using API keys from the environment.
+    """Create an FXCM client using API keys from the environment.
 
-    Uses ``ccxt.oanda`` when available; otherwise falls back to a minimal
+    Uses ``ccxt.fxcm`` when available; otherwise falls back to a minimal
     REST implementation so the rest of the application can run in
-    environments where ccxt ships without OANDA support.
+    environments where ccxt ships without FXCM support.
     """
 
-    logger.info("Initializing OANDA exchange client")
-    api_key = os.getenv("OANDA_API_KEY")
-    account_id = os.getenv("OANDA_ACCOUNT_ID")
-    api_url = os.getenv("OANDA_API_URL")
-    if not api_key or "your_oanda_api_key" in api_key.lower():
-        raise RuntimeError("OANDA_API_KEY is required; set it in your environment or .env file")
-    if not account_id or "your_oanda_account_id" in account_id.lower():
+    logger.info("Initializing FXCM exchange client")
+    api_key = os.getenv("FXCM_API_KEY")
+    account_id = os.getenv("FXCM_ACCOUNT_ID")
+    api_url = os.getenv("FXCM_API_URL")
+    if not api_key or "your_fxcm_api_key" in api_key.lower():
+        raise RuntimeError("FXCM_API_KEY is required; set it in your environment or .env file")
+    if not account_id or "your_fxcm_account_id" in account_id.lower():
         raise RuntimeError(
-            "OANDA_ACCOUNT_ID is required; set it in your environment or .env file"
+            "FXCM_ACCOUNT_ID is required; set it in your environment or .env file"
         )
-    oanda_cls = getattr(ccxt, "oanda", None)
-    if oanda_cls is not None:
-        exchange = oanda_cls({"enableRateLimit": True})
+    fxcm_cls = getattr(ccxt, "fxcm", None)
+    if fxcm_cls is not None:
+        exchange = fxcm_cls({"enableRateLimit": True})
         if api_url:
             exchange.urls["api"] = api_url
         exchange.apiKey = api_key
         exchange.uid = account_id
         return exchange
 
-    logger.warning("ccxt installation missing OANDA; using REST fallback")
-    return OandaREST(api_key=api_key, account_id=account_id)
+    logger.warning("ccxt installation missing FXCM; using REST fallback")
+    return FxcmREST(api_key=api_key, account_id=account_id)
 
 
 def fetch_ohlcv_df(

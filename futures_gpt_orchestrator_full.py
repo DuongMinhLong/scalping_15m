@@ -3,7 +3,7 @@
 This script orchestrates the flow:
 1. Build payloads from market data
 2. Generate trading decisions with the MINI model
-3. Optionally place orders on OANDA
+3. Optionally place orders on FXCM
 
 The original monolithic implementation has been refactored into smaller
 modules for clarity and maintainability.

@@ -24,16 +24,16 @@ def test_orderbook_snapshot_calculates_values():
 
 
 def test_make_exchange_falls_back_without_ccxt(monkeypatch):
-    monkeypatch.setenv("OANDA_API_KEY", "k")
-    monkeypatch.setenv("OANDA_ACCOUNT_ID", "a")
-    monkeypatch.setattr(exchange_utils.ccxt, "oanda", None, raising=False)
+    monkeypatch.setenv("FXCM_API_KEY", "k")
+    monkeypatch.setenv("FXCM_ACCOUNT_ID", "a")
+    monkeypatch.setattr(exchange_utils.ccxt, "fxcm", None, raising=False)
     ex = exchange_utils.make_exchange()
-    assert isinstance(ex, exchange_utils.OandaREST)
+    assert isinstance(ex, exchange_utils.FxcmREST)
 
 
 def test_make_exchange_requires_credentials(monkeypatch):
-    monkeypatch.delenv("OANDA_API_KEY", raising=False)
-    monkeypatch.delenv("OANDA_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("FXCM_API_KEY", raising=False)
+    monkeypatch.delenv("FXCM_ACCOUNT_ID", raising=False)
     with pytest.raises(RuntimeError):
         exchange_utils.make_exchange()
 
@@ -45,9 +45,9 @@ def test_make_exchange_uses_api_url_with_ccxt(monkeypatch):
             self.apiKey = None
             self.uid = None
 
-    monkeypatch.setenv("OANDA_API_KEY", "k")
-    monkeypatch.setenv("OANDA_ACCOUNT_ID", "a")
-    monkeypatch.setenv("OANDA_API_URL", "https://example.com/v3")
-    monkeypatch.setattr(exchange_utils.ccxt, "oanda", Dummy, raising=False)
+    monkeypatch.setenv("FXCM_API_KEY", "k")
+    monkeypatch.setenv("FXCM_ACCOUNT_ID", "a")
+    monkeypatch.setenv("FXCM_API_URL", "https://example.com")
+    monkeypatch.setattr(exchange_utils.ccxt, "fxcm", Dummy, raising=False)
     ex = exchange_utils.make_exchange()
-    assert ex.urls["api"] == "https://example.com/v3"
+    assert ex.urls["api"] == "https://example.com"
